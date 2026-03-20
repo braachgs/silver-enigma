@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Story Narrator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --border: #2e2e3e;
+      --accent: #7c6af7;
+      --accent-glow: #7c6af755;
+      --accent2: #f0a0ff;
+      --text: #e8e8f0;
+      --text-dim: #8888a8;
+      --success: #5af09a;
+      --danger: #ff6b6b;
+    }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 2.4rem;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    header p {
+      color: var(--text-dim);
+      margin-top: 0.5rem;
+      font-style: italic;
+      font-size: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.8rem;
+      width: 100%;
+      max-width: 700px;
+      margin-bottom: 1.2rem;
+    }
+
+    .card-title {
+      font-size: 0.75rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 1.1rem;
+      font-family: 'Arial', sans-serif;
+    }
+
+    /* API Key */
+    .api-key-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+    }
+
+    .api-key-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: 'Courier New', monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .api-key-row input:focus { border-color: var(--accent); }
+
+    .btn-small {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-dim);
+      padding: 0.7rem 1rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-small:hover { border-color: var(--accent); color: var(--text); }
+
+    /* Controls grid */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+
+    @media (max-width: 500px) { .controls-grid { grid-template-columns: 1fr; } }
+
+    .control-group label {
+      display: block;
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 0.55rem;
+      font-family: 'Arial', sans-serif;
+    }
+
+    .control-group select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: var(--text);
+      font-size: 0.95rem;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238888a8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .control-group select:focus { border-color: var(--accent); }
+
+    /* Duration slider */
+    .duration-control { grid-column: 1 / -1; }
+
+    .duration-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .duration-row input[type=range] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--surface2);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .duration-row input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .duration-row input[type=range]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: none;
+    }
+
+    .duration-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.9rem;
+      min-width: 60px;
+      text-align: center;
+      color: var(--accent);
+      font-weight: 600;
+      font-family: 'Arial', sans-serif;
+    }
+
+    /* Start button */
+    .start-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      width: 100%;
+      max-width: 700px;
+      padding: 1.1rem;
+      font-size: 1.15rem;
+      font-family: 'Georgia', serif;
+      letter-spacing: 0.06em;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #6b5ce7, #9b59b6);
+      color: #fff;
+      box-shadow: 0 4px 20px #6b5ce755;
+      transition: all 0.25s;
+      margin-bottom: 1.2rem;
+    }
+
+    .start-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 28px #6b5ce788; }
+    .start-btn:active:not(:disabled) { transform: translateY(0); }
+    .start-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Progress & Player */
+    .player-card { display: none; }
+    .player-card.visible { display: block; }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: 'Arial', sans-serif;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .status-dot.generating { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+    .status-dot.narrating { background: var(--success); animation: pulse 1.4s ease-in-out infinite; }
+    .status-dot.paused { background: #f5a623; }
+    .status-dot.done { background: var(--success); animation: none; }
+    .status-dot.error { background: var(--danger); animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    /* Story text */
+    .story-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.4rem 1.6rem;
+      max-height: 320px;
+      overflow-y: auto;
+      font-size: 1.02rem;
+      line-height: 1.78;
+      color: var(--text);
+      margin-bottom: 1.2rem;
+      white-space: pre-wrap;
+      scroll-behavior: smooth;
+    }
+
+    .story-box::-webkit-scrollbar { width: 6px; }
+    .story-box::-webkit-scrollbar-track { background: transparent; }
+    .story-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .story-box .highlight {
+      background: linear-gradient(90deg, #7c6af722 0%, #f0a0ff18 100%);
+      border-radius: 3px;
+      padding: 1px 0;
+    }
+
+    /* Progress bar */
+    .progress-bar-wrap {
+      background: var(--surface2);
+      border-radius: 4px;
+      height: 4px;
+      margin-bottom: 1.2rem;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.5s linear;
+    }
+
+    /* Playback controls */
+    .playback-controls {
+      display: flex;
+      gap: 0.8rem;
+      align-items: center;
+    }
+
+    .ctrl-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 0.65rem 1.2rem;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-family: 'Arial', sans-serif;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .ctrl-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .ctrl-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+    .time-display {
+      margin-left: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    /* Error msg */
+    .error-msg {
+      background: #ff6b6b18;
+      border: 1px solid #ff6b6b44;
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      font-size: 0.88rem;
+      color: #ff9999;
+      font-family: 'Arial', sans-serif;
+      display: none;
+    }
+
+    .error-msg.visible { display: block; }
+
+    /* Word counter */
+    .meta-row {
+      display: flex;
+      gap: 1.2rem;
+      font-family: 'Arial', sans-serif;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-top: 0.6rem;
+    }
+
+    .meta-row span { display: flex; align-items: center; gap: 0.3rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>✦ Story Narrator</h1>
+  <p>Choose your story, sit back, and listen.</p>
+</header>
+
+<!-- API Key -->
+<div class="card">
+  <div class="card-title">Anthropic API Key</div>
+  <div class="api-key-row">
+    <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off" />
+    <button class="btn-small" onclick="toggleKeyVisibility()">Show</button>
+  </div>
+</div>
+
+<!-- Story Settings -->
+<div class="card">
+  <div class="card-title">Story Settings</div>
+
+  <div class="controls-grid">
+    <div class="control-group duration-control">
+      <label>Duration</label>
+      <div class="duration-row">
+        <input type="range" id="duration" min="1" max="15" value="3" step="1" oninput="updateDuration(this.value)" />
+        <div class="duration-badge" id="durationLabel">3 min</div>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Genre</label>
+      <select id="genre">
+        <option value="fantasy">🧙 Fantasy</option>
+        <option value="sci-fi">🚀 Sci-Fi</option>
+        <option value="mystery">🔍 Mystery</option>
+        <option value="horror">👻 Horror</option>
+        <option value="romance">💞 Romance</option>
+        <option value="adventure">⚔️ Adventure</option>
+        <option value="fairy tale">🧚 Fairy Tale</option>
+        <option value="thriller">🕵️ Thriller</option>
+        <option value="historical fiction">🏛️ Historical Fiction</option>
+        <option value="comedy">😄 Comedy</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Voice Style</label>
+      <select id="voiceStyle">
+        <option value="warm">🌟 Warm Storyteller</option>
+        <option value="dramatic">🎭 Dramatic</option>
+        <option value="whimsical">🌈 Whimsical</option>
+        <option value="dark">🌑 Dark & Eerie</option>
+        <option value="epic">🔱 Epic Narrator</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Start Button -->
+<button class="start-btn" id="startBtn" onclick="startStory()">
+  <span>✦</span> Begin Story
+</button>
+
+<!-- Error -->
+<div class="error-msg card" id="errorMsg"></div>
+
+<!-- Player -->
+<div class="card player-card" id="playerCard">
+  <div class="status-line">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Generating your story…</span>
+  </div>
+
+  <div class="story-box" id="storyBox"></div>
+
+  <div class="meta-row" id="metaRow"></div>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progressFill"></div>
+  </div>
+
+  <div class="playback-controls">
+    <button class="ctrl-btn" id="pauseBtn" onclick="togglePause()" disabled>⏸ Pause</button>
+    <button class="ctrl-btn" id="replayBtn" onclick="replayStory()" disabled>↩ Replay</button>
+    <button class="ctrl-btn danger" id="stopBtn" onclick="stopStory()" disabled>✕ Stop</button>
+    <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+  </div>
+</div>
+
+<script>
+  // ─── State ────────────────────────────────────────────────────────────────
+  let currentStory = '';
+  let sentences = [];
+  let sentenceIndex = 0;
+  let isPaused = false;
+  let isSpeaking = false;
+  let startTime = null;
+  let timerInterval = null;
+  let estimatedDuration = 0; // seconds
+
+  const WORDS_PER_MIN = 130; // average speech rate
+
+  // ─── Voice Style Presets ─────────────────────────────────────────────────
+  const VOICE_PRESETS = {
+    warm:      { rate: 0.92, pitch: 1.05 },
+    dramatic:  { rate: 0.78, pitch: 0.90 },
+    whimsical: { rate: 1.08, pitch: 1.20 },
+    dark:      { rate: 0.72, pitch: 0.75 },
+    epic:      { rate: 0.85, pitch: 0.95 },
+  };
+
+  // ─── UI helpers ──────────────────────────────────────────────────────────
+  function updateDuration(v) {
+    document.getElementById('durationLabel').textContent = v + ' min';
+  }
+
+  function toggleKeyVisibility() {
+    const inp = document.getElementById('apiKey');
+    const btn = event.target;
+    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; }
+    else { inp.type = 'password'; btn.textContent = 'Show'; }
+  }
+
+  function setStatus(state, text) {
+    const dot = document.getElementById('statusDot');
+    dot.className = 'status-dot ' + state;
+    document.getElementById('statusText').textContent = text;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  function hideError() {
+    document.getElementById('errorMsg').classList.remove('visible');
+  }
+
+  function showPlayer() {
+    document.getElementById('playerCard').classList.add('visible');
+    document.getElementById('playerCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function setProgress(pct) {
+    document.getElementById('progressFill').style.width = Math.min(100, pct) + '%';
+  }
+
+  function setButtonsEnabled(pause, replay, stop) {
+    document.getElementById('pauseBtn').disabled = !pause;
+    document.getElementById('replayBtn').disabled = !replay;
+    document.getElementById('stopBtn').disabled = !stop;
+  }
+
+  function highlightSentence(idx) {
+    const box = document.getElementById('storyBox');
+    // Rebuild text with highlight on current sentence
+    let html = '';
+    for (let i = 0; i < sentences.length; i++) {
+      if (i === idx) {
+        html += '<span class="highlight">' + escHtml(sentences[i]) + '</span>';
+      } else {
+        html += escHtml(sentences[i]);
+      }
+      if (i < sentences.length - 1) html += ' ';
+    }
+    box.innerHTML = html;
+
+    // Scroll highlighted sentence into view
+    const span = box.querySelector('.highlight');
+    if (span) {
+      const boxRect = box.getBoundingClientRect();
+      const spanRect = span.getBoundingClientRect();
+      if (spanRect.top < boxRect.top || spanRect.bottom > boxRect.bottom) {
+        span.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ─── Timer ────────────────────────────────────────────────────────────────
+  function startTimer(totalSec) {
+    startTime = Date.now();
+    estimatedDuration = totalSec;
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      document.getElementById('timeDisplay').textContent =
+        formatTime(elapsed) + ' / ' + formatTime(totalSec);
+      setProgress((elapsed / totalSec) * 100);
+      if (elapsed >= totalSec + 2) clearInterval(timerInterval);
+    }, 500);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  function formatTime(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  }
+
+  // ─── Story Generation ─────────────────────────────────────────────────────
+  async function generateStory(apiKey, genre, minutes) {
+    const wordCount = Math.round(minutes * WORDS_PER_MIN);
+
+    const voiceStyle = document.getElementById('voiceStyle').value;
+    const styleHint = {
+      warm:      'Use warm, inviting prose that feels like a cozy campfire story.',
+      dramatic:  'Use dramatic, theatrical prose with vivid emotional beats.',
+      whimsical: 'Use playful, whimsical prose full of wonder and light humor.',
+      dark:      'Use dark, atmospheric prose with an eerie, unsettling tone.',
+      epic:      'Use grand, epic prose befitting an ancient legend.',
+    }[voiceStyle] || '';
+
+    const prompt = `Write an original ${genre} short story of approximately ${wordCount} words.
+${styleHint}
+The story should have a clear beginning, middle, and end.
+Write only the story itself — no title, no preamble, no author notes.
+Make it engaging and suitable for narration.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-6',
+        max_tokens: Math.max(2048, Math.round(wordCount * 1.6)),
+        thinking: { type: 'adaptive' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `API error ${response.status}`);
+    }
+
+    const data = await response.json();
+    const textBlock = data.content.find(b => b.type === 'text');
+    if (!textBlock) throw new Error('No story text returned from API.');
+    return textBlock.text.trim();
+  }
+
+  // ─── Narration ────────────────────────────────────────────────────────────
+  function splitIntoSentences(text) {
+    // Split on sentence-ending punctuation, keeping the punctuation
+    return text.match(/[^.!?…]+[.!?…]+["']?|[^.!?…]+$/g)?.map(s => s.trim()).filter(Boolean) || [text];
+  }
+
+  function getVoice() {
+    const voices = speechSynthesis.getVoices();
+    // Prefer English voices
+    const englishVoice = voices.find(v => v.lang.startsWith('en') && !v.localService === false)
+      || voices.find(v => v.lang.startsWith('en'))
+      || voices[0];
+    return englishVoice;
+  }
+
+  function speakFrom(idx) {
+    if (idx >= sentences.length) {
+      // Done
+      setStatus('done', 'Story complete.');
+      setButtonsEnabled(false, true, false);
+      setProgress(100);
+      stopTimer();
+      isSpeaking = false;
+      return;
+    }
+
+    sentenceIndex = idx;
+    highlightSentence(idx);
+
+    const preset = VOICE_PRESETS[document.getElementById('voiceStyle').value] || VOICE_PRESETS.warm;
+    const utt = new SpeechSynthesisUtterance(sentences[idx]);
+    const voice = getVoice();
+    if (voice) utt.voice = voice;
+    utt.rate = preset.rate;
+    utt.pitch = preset.pitch;
+    utt.volume = 1;
+
+    utt.onend = () => {
+      if (!isPaused && isSpeaking) speakFrom(idx + 1);
+    };
+
+    utt.onerror = (e) => {
+      if (e.error !== 'canceled' && e.error !== 'interrupted') {
+        console.error('Speech error:', e.error);
+        // Try next sentence
+        if (isSpeaking) speakFrom(idx + 1);
+      }
+    };
+
+    speechSynthesis.speak(utt);
+  }
+
+  function startNarration(story, minutes) {
+    currentStory = story;
+    sentences = splitIntoSentences(story);
+    sentenceIndex = 0;
+    isPaused = false;
+    isSpeaking = true;
+
+    const wordCount = story.split(/\s+/).length;
+    const preset = VOICE_PRESETS[document.getElementById('voiceStyle').value] || VOICE_PRESETS.warm;
+    const adjustedWPM = WORDS_PER_MIN * preset.rate;
+    const durationSec = Math.round((wordCount / adjustedWPM) * 60);
+
+    setStatus('narrating', 'Narrating…');
+    setButtonsEnabled(true, false, true);
+    document.getElementById('pauseBtn').textContent = '⏸ Pause';
+
+    const metaRow = document.getElementById('metaRow');
+    metaRow.innerHTML =
+      `<span>📖 ${wordCount.toLocaleString()} words</span>` +
+      `<span>⏱ ~${formatTime(durationSec)}</span>` +
+      `<span>🎭 ${document.getElementById('genre').options[document.getElementById('genre').selectedIndex].text}</span>`;
+
+    startTimer(durationSec);
+
+    // Ensure voices are loaded
+    if (speechSynthesis.getVoices().length === 0) {
+      speechSynthesis.onvoiceschanged = () => speakFrom(0);
+    } else {
+      speakFrom(0);
+    }
+  }
+
+  // ─── Controls ─────────────────────────────────────────────────────────────
+  function togglePause() {
+    if (!isSpeaking) return;
+    if (isPaused) {
+      isPaused = false;
+      setStatus('narrating', 'Narrating…');
+      document.getElementById('pauseBtn').textContent = '⏸ Pause';
+      startTimer(estimatedDuration - (Date.now() - startTime) / 1000);
+      speakFrom(sentenceIndex);
+    } else {
+      isPaused = true;
+      speechSynthesis.cancel();
+      setStatus('paused', 'Paused');
+      document.getElementById('pauseBtn').textContent = '▶ Resume';
+      stopTimer();
+    }
+  }
+
+  function replayStory() {
+    if (!currentStory) return;
+    speechSynthesis.cancel();
+    isSpeaking = true;
+    isPaused = false;
+    startNarration(currentStory, parseInt(document.getElementById('duration').value));
+  }
+
+  function stopStory() {
+    speechSynthesis.cancel();
+    isSpeaking = false;
+    isPaused = false;
+    stopTimer();
+    setStatus('done', 'Stopped.');
+    setButtonsEnabled(false, true, false);
+    setProgress(0);
+    document.getElementById('progressFill').style.transition = 'none';
+    setTimeout(() => { document.getElementById('progressFill').style.transition = 'width 0.5s linear'; }, 100);
+  }
+
+  // ─── Main Flow ────────────────────────────────────────────────────────────
+  async function startStory() {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    if (!apiKey) { showError('Please enter your Anthropic API key.'); return; }
+
+    const genre = document.getElementById('genre').value;
+    const minutes = parseInt(document.getElementById('duration').value);
+
+    hideError();
+    speechSynthesis.cancel();
+    isSpeaking = false;
+    isPaused = false;
+    stopTimer();
+
+    const startBtn = document.getElementById('startBtn');
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<span class="spin">◌</span> Generating story…';
+
+    setProgress(0);
+    document.getElementById('storyBox').textContent = '';
+    document.getElementById('metaRow').innerHTML = '';
+    document.getElementById('timeDisplay').textContent = '0:00 / 0:00';
+    setButtonsEnabled(false, false, false);
+    setStatus('generating', 'Generating your story…');
+    showPlayer();
+
+    try {
+      const story = await generateStory(apiKey, genre, minutes);
+      document.getElementById('storyBox').textContent = story;
+      startNarration(story, minutes);
+    } catch (err) {
+      setStatus('error', 'Error');
+      showError('Error: ' + err.message);
+      document.getElementById('playerCard').classList.remove('visible');
+    } finally {
+      startBtn.disabled = false;
+      startBtn.innerHTML = '<span>✦</span> Begin Story';
+    }
+  }
+
+  // Load API key from localStorage if saved
+  window.addEventListener('DOMContentLoaded', () => {
+    const saved = localStorage.getItem('snApiKey');
+    if (saved) document.getElementById('apiKey').value = saved;
+
+    // Save key on blur
+    document.getElementById('apiKey').addEventListener('blur', () => {
+      const v = document.getElementById('apiKey').value.trim();
+      if (v) localStorage.setItem('snApiKey', v);
+    });
+
+    // Pre-load voices
+    speechSynthesis.getVoices();
+    speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+  });
+</script>
+</body>
+</html>
