@@ -32,10 +32,7 @@
       padding: 2rem 1rem 4rem;
     }
 
-    header {
-      text-align: center;
-      margin-bottom: 2.5rem;
-    }
+    header { text-align: center; margin-bottom: 2.5rem; }
 
     header h1 {
       font-size: 2.4rem;
@@ -47,12 +44,7 @@
       background-clip: text;
     }
 
-    header p {
-      color: var(--text-dim);
-      margin-top: 0.5rem;
-      font-style: italic;
-      font-size: 1rem;
-    }
+    header p { color: var(--text-dim); margin-top: 0.5rem; font-style: italic; font-size: 1rem; }
 
     .card {
       background: var(--surface);
@@ -73,12 +65,7 @@
       font-family: 'Arial', sans-serif;
     }
 
-    /* API Key */
-    .api-key-row {
-      display: flex;
-      gap: 0.6rem;
-      align-items: center;
-    }
+    .api-key-row { display: flex; gap: 0.6rem; align-items: center; }
 
     .api-key-row input {
       flex: 1;
@@ -109,12 +96,7 @@
 
     .btn-small:hover { border-color: var(--accent); color: var(--text); }
 
-    /* Controls grid */
-    .controls-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.2rem;
-    }
+    .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
 
     @media (max-width: 500px) { .controls-grid { grid-template-columns: 1fr; } }
 
@@ -147,14 +129,9 @@
 
     .control-group select:focus { border-color: var(--accent); }
 
-    /* Duration slider */
     .duration-control { grid-column: 1 / -1; }
 
-    .duration-row {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
+    .duration-row { display: flex; align-items: center; gap: 1rem; }
 
     .duration-row input[type=range] {
       flex: 1;
@@ -168,8 +145,7 @@
 
     .duration-row input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 20px;
-      height: 20px;
+      width: 20px; height: 20px;
       border-radius: 50%;
       background: var(--accent);
       cursor: pointer;
@@ -177,8 +153,7 @@
     }
 
     .duration-row input[type=range]::-moz-range-thumb {
-      width: 20px;
-      height: 20px;
+      width: 20px; height: 20px;
       border-radius: 50%;
       background: var(--accent);
       cursor: pointer;
@@ -198,7 +173,6 @@
       font-family: 'Arial', sans-serif;
     }
 
-    /* Start button */
     .start-btn {
       display: flex;
       align-items: center;
@@ -224,7 +198,6 @@
     .start-btn:active:not(:disabled) { transform: translateY(0); }
     .start-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-    /* Progress & Player */
     .player-card { display: none; }
     .player-card.visible { display: block; }
 
@@ -238,26 +211,15 @@
       margin-bottom: 1rem;
     }
 
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--text-dim);
-      flex-shrink: 0;
-    }
-
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
     .status-dot.generating { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
-    .status-dot.narrating { background: var(--success); animation: pulse 1.4s ease-in-out infinite; }
-    .status-dot.paused { background: #f5a623; }
-    .status-dot.done { background: var(--success); animation: none; }
-    .status-dot.error { background: var(--danger); animation: none; }
+    .status-dot.narrating  { background: var(--success); animation: pulse 1.4s ease-in-out infinite; }
+    .status-dot.paused     { background: #f5a623; }
+    .status-dot.done       { background: var(--success); }
+    .status-dot.error      { background: var(--danger); }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.35; }
-    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-    /* Story text */
     .story-box {
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -283,29 +245,10 @@
       padding: 1px 0;
     }
 
-    /* Progress bar */
-    .progress-bar-wrap {
-      background: var(--surface2);
-      border-radius: 4px;
-      height: 4px;
-      margin-bottom: 1.2rem;
-      overflow: hidden;
-    }
+    .progress-bar-wrap { background: var(--surface2); border-radius: 4px; height: 4px; margin-bottom: 1.2rem; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; width: 0%; transition: width 0.5s linear; }
 
-    .progress-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 4px;
-      width: 0%;
-      transition: width 0.5s linear;
-    }
-
-    /* Playback controls */
-    .playback-controls {
-      display: flex;
-      gap: 0.8rem;
-      align-items: center;
-    }
+    .playback-controls { display: flex; gap: 0.8rem; align-items: center; }
 
     .ctrl-btn {
       background: var(--surface2);
@@ -324,17 +267,10 @@
 
     .ctrl-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
     .ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
     .ctrl-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 
-    .time-display {
-      margin-left: auto;
-      font-family: 'Courier New', monospace;
-      font-size: 0.85rem;
-      color: var(--text-dim);
-    }
+    .time-display { margin-left: auto; font-family: 'Courier New', monospace; font-size: 0.85rem; color: var(--text-dim); }
 
-    /* Error msg */
     .error-msg {
       background: #ff6b6b18;
       border: 1px solid #ff6b6b44;
@@ -348,16 +284,7 @@
 
     .error-msg.visible { display: block; }
 
-    /* Word counter */
-    .meta-row {
-      display: flex;
-      gap: 1.2rem;
-      font-family: 'Arial', sans-serif;
-      font-size: 0.78rem;
-      color: var(--text-dim);
-      margin-top: 0.6rem;
-    }
-
+    .meta-row { display: flex; flex-wrap: wrap; gap: 1.2rem; font-family: 'Arial', sans-serif; font-size: 0.78rem; color: var(--text-dim); margin-top: 0.6rem; }
     .meta-row span { display: flex; align-items: center; gap: 0.3rem; }
   </style>
 </head>
@@ -368,7 +295,7 @@
   <p>Choose your story, sit back, and listen.</p>
 </header>
 
-<!-- API Keys -->
+<!-- API Key -->
 <div class="card">
   <div class="card-title">Anthropic API Key</div>
   <div class="api-key-row">
@@ -377,18 +304,9 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="card-title">Gemini API Key <span style="color:var(--success);font-size:0.7rem;letter-spacing:0.08em;">★ Better voices</span></div>
-  <div class="api-key-row">
-    <input type="password" id="geminiKey" placeholder="AIza…" autocomplete="off" />
-    <button class="btn-small" onclick="toggleGeminiKeyVisibility()">Show</button>
-  </div>
-</div>
-
 <!-- Story Settings -->
 <div class="card">
   <div class="card-title">Story Settings</div>
-
   <div class="controls-grid">
     <div class="control-group duration-control">
       <label>Duration</label>
@@ -417,11 +335,11 @@
     <div class="control-group">
       <label>Voice Style</label>
       <select id="voiceStyle">
-        <option value="warm">🌟 Aoede — Warm Storyteller</option>
-        <option value="dramatic">🎭 Charon — Dramatic</option>
-        <option value="whimsical">🌈 Puck — Whimsical</option>
-        <option value="dark">🌑 Fenrir — Dark & Eerie</option>
-        <option value="epic">🔱 Kore — Epic Narrator</option>
+        <option value="warm">🌟 Warm Storyteller</option>
+        <option value="dramatic">🎭 Dramatic</option>
+        <option value="whimsical">🌈 Whimsical</option>
+        <option value="dark">🌑 Dark & Eerie</option>
+        <option value="epic">🔱 Epic Narrator</option>
       </select>
     </div>
   </div>
@@ -443,7 +361,6 @@
   </div>
 
   <div class="story-box" id="storyBox"></div>
-
   <div class="meta-row" id="metaRow"></div>
 
   <div class="progress-bar-wrap">
@@ -468,31 +385,26 @@
   let startTime = null;
   let timerInterval = null;
   let estimatedDuration = 0;
-
-  // Gemini TTS state
-  let audioCtx = null;
-  let currentSource = null;
-  let prefetched = null; // { idx, b64 }
+  let selectedVoice = null;
 
   const WORDS_PER_MIN = 130;
 
-  // ─── Gemini voice mapping ─────────────────────────────────────────────────
-  const GEMINI_VOICE_MAP = {
-    warm:      'Aoede',
-    dramatic:  'Charon',
-    whimsical: 'Puck',
-    dark:      'Fenrir',
-    epic:      'Kore',
-  };
-
-  // ─── Web Speech fallback presets ──────────────────────────────────────────
   const VOICE_PRESETS = {
     warm:      { rate: 0.92, pitch: 1.05 },
-    dramatic:  { rate: 0.78, pitch: 0.90 },
-    whimsical: { rate: 1.08, pitch: 1.20 },
-    dark:      { rate: 0.72, pitch: 0.75 },
-    epic:      { rate: 0.85, pitch: 0.95 },
+    dramatic:  { rate: 0.82, pitch: 0.88 },
+    whimsical: { rate: 1.05, pitch: 1.18 },
+    dark:      { rate: 0.75, pitch: 0.78 },
+    epic:      { rate: 0.86, pitch: 0.95 },
   };
+
+  // Best voices in priority order (Android enhanced → Google → Microsoft Neural)
+  const PREFERRED_VOICES = [
+    'Google US English', 'Google UK English Female', 'Google UK English Male',
+    'Google Australian English',
+    'Microsoft Aria Online (Natural)', 'Microsoft Jenny Online (Natural)',
+    'Microsoft Guy Online (Natural)', 'Microsoft Ryan Online (Natural)',
+    'Microsoft Sonia Online (Natural)',
+  ];
 
   // ─── UI helpers ──────────────────────────────────────────────────────────
   function updateDuration(v) {
@@ -506,16 +418,8 @@
     else { inp.type = 'password'; btn.textContent = 'Show'; }
   }
 
-  function toggleGeminiKeyVisibility() {
-    const inp = document.getElementById('geminiKey');
-    const btn = event.target;
-    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; }
-    else { inp.type = 'password'; btn.textContent = 'Show'; }
-  }
-
   function setStatus(state, text) {
-    const dot = document.getElementById('statusDot');
-    dot.className = 'status-dot ' + state;
+    document.getElementById('statusDot').className = 'status-dot ' + state;
     document.getElementById('statusText').textContent = text;
   }
 
@@ -525,9 +429,7 @@
     el.classList.add('visible');
   }
 
-  function hideError() {
-    document.getElementById('errorMsg').classList.remove('visible');
-  }
+  function hideError() { document.getElementById('errorMsg').classList.remove('visible'); }
 
   function showPlayer() {
     document.getElementById('playerCard').classList.add('visible');
@@ -546,31 +448,22 @@
 
   function highlightSentence(idx) {
     const box = document.getElementById('storyBox');
-    // Rebuild text with highlight on current sentence
     let html = '';
     for (let i = 0; i < sentences.length; i++) {
-      if (i === idx) {
-        html += '<span class="highlight">' + escHtml(sentences[i]) + '</span>';
-      } else {
-        html += escHtml(sentences[i]);
-      }
+      if (i === idx) html += '<span class="highlight">' + escHtml(sentences[i]) + '</span>';
+      else html += escHtml(sentences[i]);
       if (i < sentences.length - 1) html += ' ';
     }
     box.innerHTML = html;
-
-    // Scroll highlighted sentence into view
     const span = box.querySelector('.highlight');
     if (span) {
-      const boxRect = box.getBoundingClientRect();
-      const spanRect = span.getBoundingClientRect();
-      if (spanRect.top < boxRect.top || spanRect.bottom > boxRect.bottom) {
-        span.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }
+      const br = box.getBoundingClientRect(), sr = span.getBoundingClientRect();
+      if (sr.top < br.top || sr.bottom > br.bottom) span.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
   }
 
-  function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   // ─── Timer ────────────────────────────────────────────────────────────────
@@ -580,35 +473,41 @@
     clearInterval(timerInterval);
     timerInterval = setInterval(() => {
       const elapsed = (Date.now() - startTime) / 1000;
-      document.getElementById('timeDisplay').textContent =
-        formatTime(elapsed) + ' / ' + formatTime(totalSec);
+      document.getElementById('timeDisplay').textContent = formatTime(elapsed) + ' / ' + formatTime(totalSec);
       setProgress((elapsed / totalSec) * 100);
       if (elapsed >= totalSec + 2) clearInterval(timerInterval);
     }, 500);
   }
 
-  function stopTimer() {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
+  function stopTimer() { clearInterval(timerInterval); timerInterval = null; }
 
   function formatTime(sec) {
     sec = Math.max(0, Math.floor(sec));
     return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
   }
 
+  // ─── Voice picking ────────────────────────────────────────────────────────
+  function pickVoice() {
+    const voices = speechSynthesis.getVoices();
+    for (const name of PREFERRED_VOICES) {
+      const v = voices.find(v => v.name === name);
+      if (v) return v;
+    }
+    return voices.find(v => v.lang.startsWith('en') && !v.localService)
+      || voices.find(v => v.lang.startsWith('en'))
+      || voices[0];
+  }
+
   // ─── Story Generation ─────────────────────────────────────────────────────
   async function generateStory(apiKey, genre, minutes) {
     const wordCount = Math.round(minutes * WORDS_PER_MIN);
-
-    const voiceStyle = document.getElementById('voiceStyle').value;
     const styleHint = {
       warm:      'Use warm, inviting prose that feels like a cozy campfire story.',
       dramatic:  'Use dramatic, theatrical prose with vivid emotional beats.',
       whimsical: 'Use playful, whimsical prose full of wonder and light humor.',
       dark:      'Use dark, atmospheric prose with an eerie, unsettling tone.',
       epic:      'Use grand, epic prose befitting an ancient legend.',
-    }[voiceStyle] || '';
+    }[document.getElementById('voiceStyle').value] || '';
 
     const prompt = `Write an original ${genre} short story of approximately ${wordCount} words.
 ${styleHint}
@@ -643,81 +542,12 @@ Make it engaging and suitable for narration.`;
     return textBlock.text.trim();
   }
 
-  // ─── Gemini TTS ───────────────────────────────────────────────────────────
-  async function geminiTTS(text, voiceName, apiKey) {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text }] }],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName } }
-            }
-          }
-        })
-      }
-    );
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Gemini TTS error ${response.status}`);
-    }
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].inlineData.data; // base64 PCM LINEAR16 24kHz
-  }
-
-  function playPCM(b64, onEnded) {
-    if (!audioCtx) audioCtx = new AudioContext();
-    const raw = atob(b64);
-    const buf = new ArrayBuffer(raw.length);
-    const bytes = new Uint8Array(buf);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-    const pcm = new Int16Array(buf);
-    const floats = new Float32Array(pcm.length);
-    for (let i = 0; i < pcm.length; i++) floats[i] = pcm[i] / 32768;
-    const audioBuf = audioCtx.createBuffer(1, floats.length, 24000);
-    audioBuf.getChannelData(0).set(floats);
-    const source = audioCtx.createBufferSource();
-    source.buffer = audioBuf;
-    source.connect(audioCtx.destination);
-    source.onended = onEnded;
-    source.start();
-    return source;
-  }
-
-  function stopCurrentAudio() {
-    speechSynthesis.cancel();
-    if (currentSource) {
-      try { currentSource.stop(); } catch(e) {}
-      currentSource = null;
-    }
-    prefetched = null;
-  }
-
   // ─── Narration ────────────────────────────────────────────────────────────
   function splitIntoSentences(text) {
     return text.match(/[^.!?…]+[.!?…]+["']?|[^.!?…]+$/g)?.map(s => s.trim()).filter(Boolean) || [text];
   }
 
-  function getVoice() {
-    const voices = speechSynthesis.getVoices();
-    const preferred = [
-      'Google US English', 'Google UK English Female', 'Google UK English Male',
-      'Microsoft Aria Online (Natural)', 'Microsoft Jenny Online (Natural)', 'Microsoft Guy Online (Natural)',
-    ];
-    for (const name of preferred) {
-      const v = voices.find(v => v.name === name);
-      if (v) return v;
-    }
-    return voices.find(v => v.lang.startsWith('en-') && !v.localService)
-      || voices.find(v => v.lang.startsWith('en'))
-      || voices[0];
-  }
-
-  async function speakFrom(idx) {
+  function speakFrom(idx) {
     if (idx >= sentences.length) {
       setStatus('done', 'Story complete.');
       setButtonsEnabled(false, true, false);
@@ -730,61 +560,28 @@ Make it engaging and suitable for narration.`;
     sentenceIndex = idx;
     highlightSentence(idx);
 
-    const geminiKey = document.getElementById('geminiKey').value.trim();
+    const preset = VOICE_PRESETS[document.getElementById('voiceStyle').value] || VOICE_PRESETS.warm;
+    const utt = new SpeechSynthesisUtterance(sentences[idx]);
+    if (selectedVoice) utt.voice = selectedVoice;
+    utt.rate = preset.rate;
+    utt.pitch = preset.pitch;
+    utt.volume = 1;
 
-    if (geminiKey) {
-      // ── Gemini TTS path ──
-      const voiceName = GEMINI_VOICE_MAP[document.getElementById('voiceStyle').value] || 'Aoede';
-      try {
-        let b64;
-        if (prefetched && prefetched.idx === idx) {
-          b64 = prefetched.b64;
-          prefetched = null;
-        } else {
-          b64 = await geminiTTS(sentences[idx], voiceName, geminiKey);
-        }
-        if (!isSpeaking) return;
+    utt.onend = () => { if (!isPaused && isSpeaking) speakFrom(idx + 1); };
+    utt.onerror = (e) => {
+      if (e.error !== 'canceled' && e.error !== 'interrupted' && isSpeaking) speakFrom(idx + 1);
+    };
 
-        // Prefetch next sentence in background
-        if (idx + 1 < sentences.length) {
-          geminiTTS(sentences[idx + 1], voiceName, geminiKey)
-            .then(next => { prefetched = { idx: idx + 1, b64: next }; })
-            .catch(() => {});
-        }
-
-        currentSource = playPCM(b64, () => {
-          if (!isPaused && isSpeaking) speakFrom(idx + 1);
-        });
-      } catch (err) {
-        console.error('Gemini TTS:', err);
-        if (isSpeaking) speakFrom(idx + 1);
-      }
-    } else {
-      // ── Web Speech API fallback ──
-      const preset = VOICE_PRESETS[document.getElementById('voiceStyle').value] || VOICE_PRESETS.warm;
-      const utt = new SpeechSynthesisUtterance(sentences[idx]);
-      const voice = getVoice();
-      if (voice) utt.voice = voice;
-      utt.rate = preset.rate;
-      utt.pitch = preset.pitch;
-      utt.volume = 1;
-      utt.onend = () => { if (!isPaused && isSpeaking) speakFrom(idx + 1); };
-      utt.onerror = (e) => {
-        if (e.error !== 'canceled' && e.error !== 'interrupted') {
-          if (isSpeaking) speakFrom(idx + 1);
-        }
-      };
-      speechSynthesis.speak(utt);
-    }
+    speechSynthesis.speak(utt);
   }
 
-  function startNarration(story, minutes) {
+  function startNarration(story) {
     currentStory = story;
     sentences = splitIntoSentences(story);
     sentenceIndex = 0;
     isPaused = false;
     isSpeaking = true;
-    prefetched = null;
+    selectedVoice = pickVoice();
 
     const wordCount = story.split(/\s+/).length;
     const preset = VOICE_PRESETS[document.getElementById('voiceStyle').value] || VOICE_PRESETS.warm;
@@ -794,23 +591,17 @@ Make it engaging and suitable for narration.`;
     setButtonsEnabled(true, false, true);
     document.getElementById('pauseBtn').textContent = '⏸ Pause';
 
-    const metaRow = document.getElementById('metaRow');
-    const geminiKey = document.getElementById('geminiKey').value.trim();
-    const voiceLabel = geminiKey
-      ? `🎙 ${GEMINI_VOICE_MAP[document.getElementById('voiceStyle').value] || 'Aoede'}`
-      : '🔊 Browser voice';
-    metaRow.innerHTML =
+    const voiceName = selectedVoice ? selectedVoice.name : 'Default';
+    document.getElementById('metaRow').innerHTML =
       `<span>📖 ${wordCount.toLocaleString()} words</span>` +
       `<span>⏱ ~${formatTime(durationSec)}</span>` +
       `<span>🎭 ${document.getElementById('genre').options[document.getElementById('genre').selectedIndex].text}</span>` +
-      `<span>${voiceLabel}</span>`;
+      `<span>🔊 ${voiceName}</span>`;
 
     startTimer(durationSec);
 
-    if (geminiKey) {
-      speakFrom(0);
-    } else if (speechSynthesis.getVoices().length === 0) {
-      speechSynthesis.onvoiceschanged = () => speakFrom(0);
+    if (speechSynthesis.getVoices().length === 0) {
+      speechSynthesis.onvoiceschanged = () => { selectedVoice = pickVoice(); speakFrom(0); };
     } else {
       speakFrom(0);
     }
@@ -827,7 +618,7 @@ Make it engaging and suitable for narration.`;
       speakFrom(sentenceIndex);
     } else {
       isPaused = true;
-      stopCurrentAudio();
+      speechSynthesis.cancel();
       setStatus('paused', 'Paused');
       document.getElementById('pauseBtn').textContent = '▶ Resume';
       stopTimer();
@@ -836,14 +627,14 @@ Make it engaging and suitable for narration.`;
 
   function replayStory() {
     if (!currentStory) return;
-    stopCurrentAudio();
+    speechSynthesis.cancel();
     isSpeaking = true;
     isPaused = false;
-    startNarration(currentStory, parseInt(document.getElementById('duration').value));
+    startNarration(currentStory);
   }
 
   function stopStory() {
-    stopCurrentAudio();
+    speechSynthesis.cancel();
     isSpeaking = false;
     isPaused = false;
     stopTimer();
@@ -859,18 +650,15 @@ Make it engaging and suitable for narration.`;
     const apiKey = document.getElementById('apiKey').value.trim();
     if (!apiKey) { showError('Please enter your Anthropic API key.'); return; }
 
-    const genre = document.getElementById('genre').value;
-    const minutes = parseInt(document.getElementById('duration').value);
-
     hideError();
-    stopCurrentAudio();
+    speechSynthesis.cancel();
     isSpeaking = false;
     isPaused = false;
     stopTimer();
 
     const startBtn = document.getElementById('startBtn');
     startBtn.disabled = true;
-    startBtn.innerHTML = '<span class="spin">◌</span> Generating story…';
+    startBtn.innerHTML = '<span>◌</span> Generating story…';
 
     setProgress(0);
     document.getElementById('storyBox').textContent = '';
@@ -881,9 +669,9 @@ Make it engaging and suitable for narration.`;
     showPlayer();
 
     try {
-      const story = await generateStory(apiKey, genre, minutes);
+      const story = await generateStory(apiKey, document.getElementById('genre').value, parseInt(document.getElementById('duration').value));
       document.getElementById('storyBox').textContent = story;
-      startNarration(story, minutes);
+      startNarration(story);
     } catch (err) {
       setStatus('error', 'Error');
       showError('Error: ' + err.message);
@@ -894,22 +682,14 @@ Make it engaging and suitable for narration.`;
     }
   }
 
-  // Load API keys from localStorage
+  // ─── Init ─────────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
     const saved = localStorage.getItem('snApiKey');
     if (saved) document.getElementById('apiKey').value = saved;
-    const savedGemini = localStorage.getItem('snGeminiKey');
-    if (savedGemini) document.getElementById('geminiKey').value = savedGemini;
-
     document.getElementById('apiKey').addEventListener('blur', () => {
       const v = document.getElementById('apiKey').value.trim();
       if (v) localStorage.setItem('snApiKey', v);
     });
-    document.getElementById('geminiKey').addEventListener('blur', () => {
-      const v = document.getElementById('geminiKey').value.trim();
-      if (v) localStorage.setItem('snGeminiKey', v);
-    });
-
     speechSynthesis.getVoices();
     speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
   });
