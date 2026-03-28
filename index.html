@@ -622,11 +622,23 @@ Make it engaging and suitable for narration.`;
 
   function getVoice() {
     const voices = speechSynthesis.getVoices();
-    // Prefer English voices
-    const englishVoice = voices.find(v => v.lang.startsWith('en') && !v.localService === false)
+    // Prefer high-quality named voices first
+    const preferred = [
+      'Google US English',
+      'Google UK English Female',
+      'Google UK English Male',
+      'Microsoft Aria Online (Natural)',
+      'Microsoft Jenny Online (Natural)',
+      'Microsoft Guy Online (Natural)',
+    ];
+    for (const name of preferred) {
+      const v = voices.find(v => v.name === name);
+      if (v) return v;
+    }
+    // Fall back to any non-local (online/neural) English voice
+    return voices.find(v => v.lang.startsWith('en-') && !v.localService)
       || voices.find(v => v.lang.startsWith('en'))
       || voices[0];
-    return englishVoice;
   }
 
   function speakFrom(idx) {
