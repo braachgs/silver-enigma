@@ -6,7 +6,8 @@ description: PROVISIONAL. Shawn Gagné's rules for long-form book prose (book #2
 # Book prose: provisional rules
 
 **Status: PROVISIONAL.** Built from one sample: Shawn's tracked edits to the first
-5 paragraphs of Chapter 1 (about 450 words, 16 edits, 1 comment, 24 September 2026).
+5 paragraphs of Chapter 1 (about 450 words, 16 edits, 1 comment, 24 September 2026),
+plus the rewrites he chose while reading Chapter 1 v2 the same day.
 Every rule below is tentative until it is confirmed against more marked-up pages.
 Do not treat any rule here as settled, and do not apply one silently: when a rule
 drives an edit, the edit goes in as a tracked change so Shawn can reject it.
@@ -119,6 +120,65 @@ convention, pending Shawn's decision:
 - A placeholder left in angle brackets ("<disaster category>"). Search for "<" and
   ">" before any reading copy goes out.
 
+## 9. Shawn's spoken voice belongs in the book. [mod]
+
+When offered a neutral version and a first-person version, Shawn chose his own
+spoken register both times:
+- The concession move from writing-style §5: "I'm not claiming this growth proves
+  catastrophe bonds are good for the world... What it proves is narrower". Chosen over
+  a neutral claim-first rewrite ("MUCH better").
+- The self-implicating aside: "Finance has been trying for more than 30 years
+  (I've spent 25 of them inside the attempt)".
+
+So in book prose: offer the first-person, parenthetical version when a passage is
+making an argument. Humanizer's "I'm not saying / I'm not claiming" tell does not
+apply to Shawn's own concessions; his call transcript is the writing sample that
+overrides it. Use the aside where it is the only place a point gets made, not where
+the next paragraph makes it anyway (Shawn chose the plain version in that case).
+
+## 10. Don't state an avoided loss as a result. [mod, accuracy]
+
+The book argues that a prevented loss can't be measured, so the prose must not
+claim to have measured one. For any prevented outcome, write what was expected,
+estimated or bet on, not what "was", unless a cited source measured it.
+
+Evidence (2 instances):
+- "Restoring the catchment was cheaper than paying the claims" → "The company's
+  arithmetic said restoring the catchment would cost less than paying the claims.
+  The insurer was betting it could..."
+- A modelled study "found that a dollar... saved $13" → "estimated that a dollar...
+  saves $13".
+
+## 11. Claims must survive the chapter's own evidence. [mod, accuracy]
+
+Before a sweeping line stays in, check it against the examples in the same chapter.
+Evidence:
+- "financial systems are very good at pricing things that happen and very bad at
+  pricing things that don't" contradicted the cat bond section (a 1% event that
+  mostly doesn't happen). Now "reasonably good at pricing things that might happen
+  and very bad at pricing things that were prevented from happening".
+- "finance is only now beginning to try" contradicted the author's own 25 years.
+- "Finance finds that move almost impossible" sat right after Santam doing it.
+  Now "the move finance finds hardest to value".
+- Scope words: "ahead of almost everyone" → "ahead of almost every other insurer";
+  a 130-person survey can't carry "Companies" flatly.
+
+## 12. Plain, candid tone; no hyperbole. [mod]
+
+Cut idioms that are dramatic and don't describe the thing literally. Evidence:
+"murder to value" (cut by Shawn: wrong tone, and it doesn't apply to value). Same
+test applied to "at ruinous cost" and "armies of consultants". Still open, Shawn to
+decide: "belle of the ball", "where the bodies are buried".
+
+## 13. Repetition checks specific to this book.
+
+- "this book": no more than once per paragraph; use "the book", "here" or "I".
+- "For now" and "what matters is": once per chapter each.
+- "value" as a verb and noun: watch for 3+ in a paragraph.
+- Relative time ("a decade ago", "now") ages badly; use the year.
+- One spelling system for the whole manuscript: British "travelled, modelled" vs
+  American. Decision pending, alongside tonne.
+
 ---
 
 ## What would move this out of provisional
@@ -130,5 +190,7 @@ convention, pending Shawn's decision:
 
 ## Change log
 
+- 2026-09-24 (later): rules 9-13 added from Shawn's live read of Chapter 1 v2
+  (7 accepted rewrites in the protection gap, cat bond and Santam sections).
 - 2026-09-24: first draft, from Shawn's edits to Chapter 1, paragraphs 1-5
   (Chapter_01_Reading_Copy_humanized.docx, tracked changes by Shawn Gagne).
