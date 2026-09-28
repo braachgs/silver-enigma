@@ -179,6 +179,98 @@ decide: "belle of the ball", "where the bodies are buried".
 - One spelling system for the whole manuscript: British "travelled, modelled" vs
   American. Decision pending, alongside tonne.
 
+## 14. A restated thesis must add something. [low]
+
+When the chapter comes back to its central claim, the restatement adds a condition
+or a mechanism. It never repeats the earlier claim in new words.
+
+Evidence (1 instance): "Markets price risk reasonably well and price risk reduction
+badly" nearly duplicated the paragraph-5 "wall" sentence. Replaced with "Once they
+can model a risk, markets can price it. What they can't price well is the money
+spent to make that risk smaller", which adds the modelling condition and names what
+is actually mispriced.
+
+## 15. Show first, then name, for key terms. [low]
+
+Introduce a term the book will lean on by describing what happened, then give it a
+name. That matches writing-style §5 (analogy first, answer last). Check whether the
+term already means something else in the market the reader may come from.
+
+Evidence (1 instance): "So we started bundling" became "So we started putting
+different credits together and selling them as one", with "bundle" named in the
+next sentence. "Bundling" collides with bundled and unbundled RECs, which the same
+paragraph introduces.
+
+## 16. A pointer to another chapter names the payoff, and it must be true. [low]
+
+"I come back to that later" gives the reader nothing to carry forward. Say what the
+later chapter delivers, in one clause, and check that chapter before writing it.
+
+Evidence (1 instance): "I will come back to that filing later" became "I come back
+to that filing in Chapter 4, because it got the central idea right and missed a
+bigger one: it graded each bundle once, as if a credit's risk never changed." An
+earlier draft pointed Chapter 4 at the mutual-fund and 2008 argument; reading
+Chapter 4 showed it doesn't make that argument, so the pointer was wrong.
+
+Chapter numbers are hard references. Search for "Chapter [0-9]" at the end and
+confirm each one if chapters move.
+
+## 17. No more than two comparisons in a passage. [low]
+
+Each analogy asks the reader to load a new model. Stacking them buries the one that
+carries the argument.
+
+Evidence (1 instance): mutual fund, then "a debt, not a share", then 2008 mortgage
+securities, then insurance, on the heels of the cat bond section. Cut to the mutual
+fund (the author's own 2016 sentence) and the hedge (the payoff), with the correction
+reduced to one self-contained aside.
+
+## 18. Don't reuse a distinctive word across nearby sections. [low]
+
+Rule 13 covers repetition inside a paragraph. This covers words that stand out
+enough that a reader notices the second use a few pages later.
+
+Evidence (1 instance): "arithmetic" in the Santam section ("The company's arithmetic
+said") and again in the urban trees story ("When we did the arithmetic"). The second
+was cut ("In any one of our urban trees, the carbon turned out to be worth...").
+
+## 19. Don't stretch a defined term. [low]
+
+Once the chapter defines a term, use it only for that thing. A new thing gets its
+own words.
+
+Evidence (1 instance): "protection gap" is defined as the uninsured share of
+losses. "The missing machinery leaves a protection gap of a different kind" used it
+for a financing gap. Replaced with "Without that machinery, capital that wants to
+fund climate solutions cannot price the risk."
+
+## 20. Keep benefits and risks apart. [low, accuracy]
+
+The book's core claim is that a credit's price is a bundle of separable risks. A
+list of benefits doesn't describe that bundle.
+
+Evidence (1 instance): "The triple dividend names part of what is in that bundle"
+became "The triple dividend names some of what a buyer is paying for, and the
+chapters that follow name the risks."
+
+## 21. Separate why a buyer pays from what the buyer gets. [low, accuracy]
+
+Motive and product are different claims. Mixing them hides the argument.
+
+Evidence (1 instance): "we were selling something closer to a reputation" became
+"we were selling a physical anchor, something the buyer could walk up to and
+touch". Reputation was the motive; the tree was the product, and the one piece of
+the bundle a buyer could verify. Naming the product keeps the later "hedge"
+realization a discovery instead of a repeat.
+
+## Pronoun check after inserting a sentence
+
+Whenever a sentence is added between two others, re-read the sentence after it. A
+"that" or "it" that pointed at the old neighbour now points at the new one.
+Evidence: "Even that was the wrong instrument" after the registry sentence was
+added; "That was the aha moment" once the sentences between it and its referent
+were cut. Both fixed by naming the noun (rule 1).
+
 ---
 
 ## What would move this out of provisional
@@ -190,6 +282,8 @@ decide: "belle of the ball", "where the bodies are buried".
 
 ## Change log
 
+- 2026-09-28: rules 14-21 and the pronoun check added from the rest of the
+  Chapter 1 v2 read (bundling, patent, mutual fund, machinery paragraphs).
 - 2026-09-24 (later): rules 9-13 added from Shawn's live read of Chapter 1 v2
   (7 accepted rewrites in the protection gap, cat bond and Santam sections).
 - 2026-09-24: first draft, from Shawn's edits to Chapter 1, paragraphs 1-5
