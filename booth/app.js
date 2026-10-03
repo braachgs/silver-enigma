@@ -41,7 +41,7 @@
     mlb: {
       label: 'Baseball', engine: window.BallBooth, defaultPersona: 'cookie',
       demoUrl: 'mlb-demo-game.json', demoLabel: 'Demo: BOS @ TOR (fictional)',
-      syncHint: 'When the pitcher delivers on TV, click <b>sync</b> next to that pitch below.',
+      syncHint: 'When the pitcher delivers on TV, click <b>sync</b> next to that pitch below. Calls are then timed to when each pitch happened, so one sync should hold; re-sync only if you pause the TV.',
       async listGames(date) {
         const data = await getJSON(`/api/mlb/v1/schedule?sportId=1&date=${date}&hydrate=team`);
         const games = (data.dates || []).flatMap((d) => d.games || []);
@@ -65,9 +65,10 @@
     llm: false, selected: null, running: false, mode: null,
     game: null, state: null, seen: new Set(), queue: [], speaking: null, seq: 0,
     pending: [], inFlight: false, recent: [], joining: false, lastLineAt: 0,
-    timers: [], delay: store.get('delay', 20), finished: false,
+    timers: [], delay: 20, finished: false,
     spoken: [], events: [], // recent history for flags
     lags: [], lastPollAt: 0,
+    late: [], // ms each recent pitch reached the booth after its TV moment
     macVoices: [], // from the server's `say -v ?`
   };
 
@@ -153,6 +154,18 @@
   document.addEventListener('visibilitychange', () => log('visibility', { state: document.visibilityState }));
 
   // Median of recent feed lags (arrival minus when it happened), in seconds.
+  function median(xs) {
+    if (!xs.length) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  }
+
+  // How far behind your TV the booth's data is arriving (seconds), if at all.
+  function behindTv() {
+    const m = median(app.late);
+    return m != null && m > 2500 ? Math.round(m / 1000) : null;
+  }
+
   function feedLag() {
     if (!app.lags.length) return null;
     const s = [...app.lags].sort((a, b) => a - b);
@@ -376,9 +389,11 @@
       const b = document.createElement('button');
       b.textContent = 'sync';
       b.title = 'Click the moment this happens on your TV';
+      // Baseball pitches carry the time they happened, so sync against that:
+      // your TV's lag behind live is steady even when the feed is bursty.
       b.onclick = () => {
-        setDelay(Math.round((Date.now() - arrivedAt) / 1000));
-        log('sync', { delay: app.delay, event: desc });
+        setDelay(Math.round((Date.now() - (ev.wall || arrivedAt)) / 1000));
+        log('sync', { delay: app.delay, event: desc, anchor: ev.wall ? 'event time' : 'arrival' });
       };
       row.appendChild(b);
     }
@@ -397,17 +412,20 @@
   }
 
   function setDelay(sec) {
-    app.delay = clamp(sec, 0, 180);
+    app.delay = clamp(sec, 0, 600);
     $('delay').textContent = `${app.delay}s`;
-    store.set('delay', app.delay);
+    store.set(`${app.sport}.delay`, app.delay);
   }
 
   // ---------------------------------------------------------------------------
   // Speech scheduler
   // ---------------------------------------------------------------------------
 
-  function enqueue(lines, arrivedAt) {
-    for (const l of lines) app.queue.push({ ...l, arrivedAt, seq: ++app.seq });
+  // wall: when the event happened (baseball). Lines with one are timed to
+  // wall + delay (the delay is then "your TV is behind live by");
+  // otherwise to arrival + delay.
+  function enqueue(lines, arrivedAt, wall) {
+    for (const l of lines) app.queue.push({ ...l, arrivedAt, wall: wall || null, seq: ++app.seq });
   }
 
   // Stop whatever is being said. For Mac voices, only the line we're cutting
@@ -459,7 +477,7 @@
   function tick() {
     const now = Date.now();
     const delayMs = app.mode === 'live' ? app.delay * 1000 : 0;
-    const dueAt = (l) => l.arrivedAt + delayMs;
+    const dueAt = (l) => (app.mode === 'live' && l.wall ? l.wall : l.arrivedAt) + delayMs;
     const stale = app.queue.filter((l) => l.priority < 5 && now - dueAt(l) > STALE_MS);
     if (stale.length) {
       app.queue = app.queue.filter((l) => !stale.includes(l));
@@ -508,7 +526,7 @@
     app.seen = new Set();
     app.queue = []; app.pending = []; app.recent = [];
     app.finished = false;
-    app.lags = []; app.lastPollAt = 0;
+    app.lags = []; app.lastPollAt = 0; app.late = [];
   }
 
   function process(events, arrivedAt) {
@@ -527,12 +545,16 @@
         app.lags.push(lagMs);
         if (app.lags.length > 15) app.lags.shift();
       }
+      if (lagMs != null && ev.type === 'pitch') {
+        app.late.push(arrivedAt - (ev.wall + app.delay * 1000));
+        if (app.late.length > 10) app.late.shift();
+      }
       log('event', { id: ev.id, type: ev.type, desc, arrivedAt, feedLagMs: lagMs, situation: eng().situation(app.state) });
       if (claude) {
-        app.pending.push({ ev, arrivedAt, fallback: lines, desc });
+        app.pending.push({ ev, arrivedAt, fallback: lines, desc, wall: app.mode === 'live' ? ev.wall : null });
         if (ev.type === 'goal') flushClaude();
       } else {
-        enqueue(lines, arrivedAt);
+        enqueue(lines, arrivedAt, app.mode === 'live' ? ev.wall : null);
       }
       if (ev.type === 'game-end') app.finished = true;
       if (claude && ev.type === 'game-end') flushClaude();
@@ -560,7 +582,7 @@
     try {
       const r = await postJSON('/api/commentary', payload);
       const lines = r.lines.map((l) => ({ ...l, priority: l.excitement === 2 ? 10 : maxPri }));
-      if (app.running) enqueue(lines, arrivedAt);
+      if (app.running) enqueue(lines, arrivedAt, batch.length ? batch[0].wall : null);
       app.recent.push(...lines.map((l) => `${l.speaker}: ${l.text}`));
       app.recent = app.recent.slice(-24);
       const late = app.mode === 'live' && r.seconds > app.delay;
@@ -569,7 +591,7 @@
     } catch (e) {
       log('warn', { message: `Claude failed: ${e.message}` });
       $('llmStatus').textContent = `Claude failed (${e.message}). Using built-in lines for that stretch.`;
-      if (app.running) for (const b of batch) enqueue(b.fallback, b.arrivedAt);
+      if (app.running) for (const b of batch) enqueue(b.fallback, b.arrivedAt, b.wall);
     } finally {
       app.inFlight = false;
       app.joining = false;
@@ -611,8 +633,11 @@
         app.lastPollAt = t0;
         if (sport().feedStatus(data) === 'final' && !app.finished) { app.finished = true; log('final', { situation: eng().situation(app.state) }); }
         const lag = feedLag();
+        const behind = behindTv();
         if (!app.finished) setStatus(`Live: ${app.game.away.name} at ${app.game.home.name}. Feed updated ${new Date().toLocaleTimeString()}.` +
-          (lag != null ? ` MLB's feed is running about ${lag}s behind live.` : ''));
+          (lag != null ? ` MLB's feed is running about ${lag}s behind live.` : '') +
+          (behind != null ? ` Pitches reach the booth about ${behind}s after your TV shows them: pause the TV for ~${behind + 3}s, then sync on the next pitch.` : ''),
+          behind != null);
       } catch (e) {
         log('warn', { message: `feed poll failed: ${e.message}` });
         setStatus(`Feed hiccup (${e.message}); retrying…`, true);
@@ -743,6 +768,9 @@
 
   function applySport() {
     document.querySelectorAll('[data-sport]').forEach((b) => b.classList.toggle('on', b.dataset.sport === app.sport));
+    // Baseball syncs to when each pitch happened, so the number means "TV lag".
+    $('delayLabel').textContent = app.sport === 'mlb' ? 'Your TV is behind live by' : 'Commentary delay';
+    setDelay(store.get(`${app.sport}.delay`, app.sport === 'mlb' ? 30 : 20));
     $('syncHintSport').innerHTML = sport().syncHint;
     initPersonas();
   }
