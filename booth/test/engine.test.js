@@ -1,4 +1,4 @@
-// Run: node --test hnic/test
+// Run: node --test booth/test/*.test.js
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');

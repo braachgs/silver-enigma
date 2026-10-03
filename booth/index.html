@@ -51,13 +51,23 @@
     .line .who { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin-right: .4rem; }
     .hint { font-size: .8rem; color: var(--dim); margin-top: .5rem; line-height: 1.45; }
     .hidden { display: none !important; }
+    header { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+    .sports { display: flex; gap: .4rem; }
+    .sports button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .note { font-size: .75rem; color: var(--dim); margin-left: .35rem; }
   </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>Broadcast <span>Booth</span></h1>
-    <p>Pick a game, pick a booth, mute the TV.</p>
+    <div>
+      <h1>Broadcast <span>Booth</span></h1>
+      <p>Pick a game, pick a booth, mute the TV.</p>
+    </div>
+    <div class="sports" role="group" aria-label="Sport">
+      <button data-sport="nhl">Hockey</button>
+      <button data-sport="mlb">Baseball</button>
+    </div>
   </header>
 
   <div class="grid2">
@@ -97,7 +107,7 @@
       </div>
       <div class="row">
         <select id="speed" class="hidden" style="width:auto" title="Replay speed">
-          <option value="1">1× (real game clock)</option><option value="2">2×</option>
+          <option value="1">1×</option><option value="2">2×</option>
           <option value="4" selected>4×</option><option value="8">8×</option>
         </select>
         <button class="primary" id="startBtn" disabled>Start</button>
@@ -111,9 +121,9 @@
       <button data-d="1">+1</button><button data-d="5">+5</button>
     </div>
     <p class="hint" id="syncHint">
-      Live sync: the NHL feed and your TV are rarely in step. When something happens on TV, click
-      <b>sync</b> next to that event below and the booth will line up with your picture. If the
-      commentary runs <i>behind</i> your TV even at 0s, pause your TV/stream for a few seconds instead.
+      Live sync: the data feed and your TV are rarely in step. <span id="syncHintSport"></span>
+      The booth then lines up with your picture. If the commentary runs <i>behind</i> your TV even at
+      0s, pause your TV/stream for a few seconds instead.
     </p>
   </section>
 
@@ -123,6 +133,7 @@
   </section>
 </main>
 <script src="engine.js"></script>
+<script src="mlb-engine.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

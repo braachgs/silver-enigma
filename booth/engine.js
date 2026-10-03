@@ -113,6 +113,7 @@
       timeInPeriod: play.timeInPeriod || '00:00',
       timeRemaining: play.timeRemaining || '',
       gameSeconds: ((pd.number || 1) - 1) * 1200 + clockToSeconds(play.timeInPeriod),
+      replayAt: ((pd.number || 1) - 1) * 1200 + clockToSeconds(play.timeInPeriod),
       team: team ? team.abbrev : '',
       teamName: team ? team.name : '',
       opp: team ? otherTeam(game, team).abbrev : '',
@@ -626,18 +627,37 @@
   };
 
   // ---------------------------------------------------------------------------
-  // Replay helpers
+  // Sport interface used by app.js (shared with mlb-engine.js)
   // ---------------------------------------------------------------------------
 
-  // Order events for replay with a game-clock offset. Stoppages take no game time.
-  function replayTimeline(events) {
-    return events.map((ev) => ({ ev, at: ev.gameSeconds }));
+  function refreshGame(game, pbp) {
+    const fresh = buildGame(pbp);
+    if (fresh.roster.size) game.roster = fresh.roster;
+    game.state = fresh.state;
+  }
+
+  function inProgress(events) {
+    return events.some((e) => e.type !== 'period-start' && e.type !== 'faceoff');
+  }
+
+  function boardText(state, ev) {
+    const g = state.game;
+    return {
+      main: `${g.away.abbrev} ${state.score.away} – ${state.score.home} ${g.home.abbrev}`,
+      sub: `${periodLabel(state.period, state.periodType)}${ev && ev.timeRemaining ? ' · ' + ev.timeRemaining : ''} · SOG ${state.sog.away}–${state.sog.home}`,
+    };
+  }
+
+  function situation(state) {
+    const g = state.game;
+    return `${g.away.name} ${state.score.away}, ${g.home.name} ${state.score.home}. ` +
+      `Shots ${state.sog.away}-${state.sog.home}. ${periodLabel(state.period, state.periodType)}.`;
   }
 
   const Booth = {
-    buildGame, normalizePlay, normalizePlays, describe, GameState, templateLines,
-    joinLine, shouldCall, wantsColour, scoreLine, fill, PERSONAS, replayTimeline,
-    periodLabel, clockToSeconds, canCall,
+    sport: 'nhl', buildGame, refreshGame, normalizePlay, normalizePlays, inProgress, describe,
+    situation, boardText, GameState, templateLines, joinLine, shouldCall, wantsColour, scoreLine,
+    fill, PERSONAS, periodLabel, clockToSeconds, canCall,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Booth;

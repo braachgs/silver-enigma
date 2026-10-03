@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Broadcast Booth local server.
 
-Serves the app, relays NHL data (the browser can't call api-web.nhle.com
-directly because of CORS), and optionally writes commentary with Claude.
+Serves the app, relays NHL and MLB data (the browser can't call the league
+APIs directly because of CORS), and optionally writes commentary with Claude.
 
     python3 server.py                 # http://localhost:8765
     ANTHROPIC_API_KEY=... python3 server.py   # enables "Claude" commentary
@@ -10,6 +10,7 @@ directly because of CORS), and optionally writes commentary with Claude.
 Standard library only, except the optional `anthropic` package.
 """
 import argparse
+import gzip
 import json
 import os
 import re
@@ -23,18 +24,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 NHL_BASE = "https://api-web.nhle.com/v1/"
+MLB_BASE = "https://statsapi.mlb.com/api/"
 STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/engine.js": ("engine.js", "text/javascript; charset=utf-8"),
     "/demo-game.json": ("demo-game.json", "application/json"),
+    "/mlb-engine.js": ("mlb-engine.js", "text/javascript; charset=utf-8"),
+    "/mlb-demo-game.json": ("mlb-demo-game.json", "application/json"),
 }
 NHL_PATH = re.compile(r"^[A-Za-z0-9/_\-]{1,200}$")
+MLB_PATH = re.compile(r"^v1(\.1)?/[A-Za-z0-9/_\-]{1,200}$")
+MLB_QUERY = re.compile(r"^[A-Za-z0-9=&,_\-.]{0,300}$")
 MODEL = os.environ.get("BOOTH_MODEL", "claude-opus-5-5")
 
 # ---------------------------------------------------------------------------
-# NHL relay with a tiny cache so several tabs don't hammer the API
+# League relays, with a tiny cache so several tabs don't hammer the APIs
 # ---------------------------------------------------------------------------
 
 _cache = {}
@@ -42,54 +48,88 @@ _cache_lock = threading.Lock()
 CACHE_SECONDS = 2.0
 
 
+def _fetch(url, league):
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _cache.get(url)
+        if hit and now - hit[0] < CACHE_SECONDS:
+            return hit[1], hit[2]
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "BroadcastBooth/1.0 (personal use)",
+        "Accept": "application/json",
+        # MLB's live feed is a few MB raw; compressed it's a fraction of that.
+        "Accept-Encoding": "gzip",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            status, body = resp.status, resp.read()
+            if resp.headers.get("Content-Encoding") == "gzip":
+                body = gzip.decompress(body)
+    except urllib.error.HTTPError as e:
+        status, body = e.code, json.dumps({"error": f"{league} API returned {e.code}"}).encode()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        status, body = 502, json.dumps({"error": f"could not reach {league} API: {e}"}).encode()
+    with _cache_lock:
+        _cache[url] = (now, status, body)
+    return status, body
+
+
+def bad_request():
+    return 400, json.dumps({"error": "bad path"}).encode()
+
+
 def fetch_nhl(path):
     """Return (status, body_bytes) for api-web.nhle.com/v1/<path>."""
     if not NHL_PATH.match(path) or ".." in path:
-        return 400, json.dumps({"error": "bad path"}).encode()
-    now = time.monotonic()
-    with _cache_lock:
-        hit = _cache.get(path)
-        if hit and now - hit[0] < CACHE_SECONDS:
-            return hit[1], hit[2]
-    req = urllib.request.Request(NHL_BASE + path, headers={
-        "User-Agent": "BroadcastBooth/1.0 (personal use)",
-        "Accept": "application/json",
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            status, body = resp.status, resp.read()
-    except urllib.error.HTTPError as e:
-        status, body = e.code, json.dumps({"error": f"NHL API returned {e.code}"}).encode()
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        status, body = 502, json.dumps({"error": f"could not reach NHL API: {e}"}).encode()
-    with _cache_lock:
-        _cache[path] = (now, status, body)
-    return status, body
+        return bad_request()
+    return _fetch(NHL_BASE + path, "NHL")
+
+
+def fetch_mlb(path, query=""):
+    """Return (status, body_bytes) for statsapi.mlb.com/api/<path>?<query>."""
+    if not MLB_PATH.match(path) or ".." in path or not MLB_QUERY.match(query):
+        return bad_request()
+    return _fetch(MLB_BASE + path + (f"?{query}" if query else ""), "MLB")
 
 
 # ---------------------------------------------------------------------------
 # Claude commentary
 # ---------------------------------------------------------------------------
 
-BOOTH_RULES = """You are the broadcast booth for a live NHL game. You receive the newest \
-play-by-play events from the official data feed and write what the booth says, \
-as two voices: "pbp" (play-by-play) and "colour" (analyst).
+COMMON_RULES = """You receive the newest events from the league's official data \
+feed and write what the booth says, as two voices: "pbp" (play-by-play) and \
+"colour" (analyst).
 
 Rules:
 - Facts come ONLY from the events and game state given. Never invent players, \
-goals, injuries, fights, stats, or anything not in the data. Colour may offer \
-opinions, character, and general hockey talk, but no made-up facts.
+injuries, stats, history or anything not in the data. Colour may offer opinions, \
+character and general talk about the sport, but no made-up facts.
 - Lines are spoken aloud by text-to-speech: short sentences, no stage directions, \
 no emoji, no markdown, no sound effects in asterisks.
+- Do not repeat lines or catchphrases from the recent commentary.
+- If nothing in the batch is worth saying, return an empty list."""
+
+SPORT_RULES = {
+    "nhl": """This is a live NHL game.
 - Play-by-play lines are brief (usually under 15 words) and in event order. Not \
 every faceoff, giveaway or missed shot needs a call; skip the mundane when a \
 batch is busy. Always call goals and penalties, and give the score after a goal.
 - Colour speaks after goals, penalties, period ends, and some whistles. Keep it \
 to one or two sentences, and do not let colour talk over a run of action.
-- Do not repeat lines or catchphrases from the recent commentary.
 - Excitement: "calm" for routine, "up" for big saves/hits/penalties, "huge" only \
-for goals in close games, late drama, or overtime.
-- If nothing in the batch is worth saying, return an empty list."""
+for goals in close games, late drama, or overtime.""",
+    "mlb": """This is a live MLB game, delivered pitch by pitch.
+- Introduce each batter. Call pitches briefly and give the count often; you may \
+skip some routine balls and fouls. Never call strike three or ball four as an \
+ordinary pitch: the at-bat RESULT line covers it.
+- Always call every RESULT, using its description for what happened (who \
+fielded it, who scored). After runs score, give the score. Mention exit \
+velocity or distance on big hits when given.
+- Baseball has room for colour between pitches and between innings: use it, \
+one or two sentences at a time, but stop for the action.
+- Excitement: "calm" for routine, "up" for extra-base hits, runs, big \
+strikeouts and steals, "huge" for home runs in close or late games and walk-offs.""",
+}
 
 OUTPUT_SCHEMA = {
     "type": "object",
@@ -118,13 +158,13 @@ EXCITEMENT = {"calm": 0, "up": 1, "huge": 2}
 def build_request(payload):
     """Turn the browser's payload into (system, user_text). Pure; tested."""
     persona = payload.get("persona") or {}
-    system = f"{BOOTH_RULES}\n\nTHE BOOTH TONIGHT: {persona.get('label', 'Classic broadcast')}\n{persona.get('style', '')}"
+    sport = payload.get("sport") if payload.get("sport") in SPORT_RULES else "nhl"
+    system = (f"You are the broadcast booth for a live game.\n\n{COMMON_RULES}\n\n{SPORT_RULES[sport]}\n\n"
+              f"THE BOOTH TONIGHT: {persona.get('label', 'Classic broadcast')}\n{persona.get('style', '')}")
     game = payload.get("game") or {}
-    st = payload.get("state") or {}
     parts = [
         f"Game: {game.get('away', 'Away')} at {game.get('home', 'Home')}" + (f", {game['venue']}" if game.get("venue") else "") + ".",
-        f"Current score: {game.get('away', 'Away')} {st.get('awayScore', 0)}, {game.get('home', 'Home')} {st.get('homeScore', 0)}. "
-        f"Shots: {st.get('awaySog', 0)}-{st.get('homeSog', 0)}. {st.get('period', '')}".strip(),
+        f"Situation now: {payload.get('situation') or 'not available'}",
     ]
     if payload.get("joining"):
         parts.append("We are joining this game in progress: open with a brief welcome and the situation.")
@@ -225,8 +265,11 @@ class Handler(BaseHTTPRequestHandler):
             c = self.commentator
             self.send_json(200, {"llm": c.available, "model": MODEL if c.available else None, "llmError": c.error})
         elif path.startswith("/api/nhl/"):
-            status, body = fetch_nhl(path[len("/api/nhl/"):])
-            self.send(status, body)
+            if query:
+                return self.send(*bad_request())
+            self.send(*fetch_nhl(path[len("/api/nhl/"):]))
+        elif path.startswith("/api/mlb/"):
+            self.send(*fetch_mlb(path[len("/api/mlb/"):], query))
         else:
             self.send_json(404, {"error": "not found"})
 

@@ -1,9 +1,10 @@
 /* Broadcast Booth UI: game picking, live polling / replay, Claude batching,
- * speech scheduling with a sync delay. Commentary logic lives in engine.js. */
+ * speech scheduling with a sync delay. Sport-specific commentary logic lives
+ * in engine.js (hockey) and mlb-engine.js (baseball); the SPORTS table below
+ * adapts each league's schedule and feed. */
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const B = window.Booth;
   const POLL_MS = 5000;      // live feed poll
   const BATCH_MS = 6000;     // how often to send events to Claude
   const STALE_MS = 15000;    // drop routine lines this late
@@ -14,7 +15,53 @@
     set(k, v) { try { localStorage.setItem('booth.' + k, JSON.stringify(v)); } catch { /* private mode */ } },
   };
 
+  // ---------------------------------------------------------------------------
+  // Sports
+  // ---------------------------------------------------------------------------
+
+  // Normalised game status: 'live' | 'final' | 'future'.
+  const NHL_STATUS = (st) => (st === 'LIVE' || st === 'CRIT' ? 'live' : st === 'FINAL' || st === 'OFF' ? 'final' : 'future');
+  const MLB_STATUS = (st) => (st === 'Live' ? 'live' : st === 'Final' ? 'final' : 'future');
+
+  const SPORTS = {
+    nhl: {
+      label: 'Hockey', engine: window.Booth, defaultPersona: 'hnic90',
+      demoUrl: 'demo-game.json', demoLabel: 'Demo: MTL @ TOR (fictional)',
+      syncHint: 'When a whistle or a shot happens on TV, click <b>sync</b> next to that event below.',
+      async listGames(date) {
+        const data = await getJSON(`/api/nhl/score/${date}`);
+        return (data.games || []).map((g) => ({
+          id: g.id, status: NHL_STATUS(g.gameState), label: `${g.awayTeam?.abbrev ?? '?'} @ ${g.homeTeam?.abbrev ?? '?'}`,
+          start: g.startTimeUTC, awayScore: g.awayTeam?.score, homeScore: g.homeTeam?.score,
+        }));
+      },
+      feedUrl: (id) => `/api/nhl/gamecenter/${id}/play-by-play`,
+      feedStatus: (pbp) => NHL_STATUS(pbp.gameState),
+    },
+    mlb: {
+      label: 'Baseball', engine: window.BallBooth, defaultPersona: 'cookie',
+      demoUrl: 'mlb-demo-game.json', demoLabel: 'Demo: BOS @ TOR (fictional)',
+      syncHint: 'When the pitcher delivers on TV, click <b>sync</b> next to that pitch below.',
+      async listGames(date) {
+        const data = await getJSON(`/api/mlb/v1/schedule?sportId=1&date=${date}&hydrate=team`);
+        const games = (data.dates || []).flatMap((d) => d.games || []);
+        return games.map((g) => {
+          const a = g.teams?.away, h = g.teams?.home;
+          const ab = (t) => t?.team?.abbreviation || t?.team?.teamName || t?.team?.name || '?';
+          return {
+            id: g.gamePk, status: MLB_STATUS(g.status?.abstractGameState), label: `${ab(a)} @ ${ab(h)}`,
+            note: g.seriesDescription && g.gameType !== 'R' ? g.seriesDescription : '',
+            start: g.gameDate, awayScore: a?.score, homeScore: h?.score, detailed: g.status?.detailedState,
+          };
+        });
+      },
+      feedUrl: (id) => `/api/mlb/v1.1/game/${id}/feed/live`,
+      feedStatus: (feed) => MLB_STATUS(feed.gameData?.status?.abstractGameState),
+    },
+  };
+
   const app = {
+    sport: 'nhl',
     llm: false, selected: null, running: false, mode: null,
     game: null, state: null, seen: new Set(), queue: [], speaking: null, seq: 0,
     pending: [], inFlight: false, recent: [], joining: false, lastLineAt: 0,
@@ -44,7 +91,9 @@
     $('status').classList.toggle('err', !!err);
   }
 
-  const persona = () => B.PERSONAS[$('persona').value] || B.PERSONAS.hnic90;
+  const sport = () => SPORTS[app.sport];
+  const eng = () => sport().engine;
+  const persona = () => eng().PERSONAS[$('persona').value] || eng().PERSONAS[sport().defaultPersona];
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const todayLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 
@@ -52,16 +101,22 @@
   // Setup: personas, voices, status
   // ---------------------------------------------------------------------------
 
+  function onPersonaChange() {
+    $('blurb').textContent = persona().blurb;
+    store.set(`${app.sport}.persona`, $('persona').value);
+    fillVoiceSelects();
+  }
+
   function initPersonas() {
-    for (const p of Object.values(B.PERSONAS)) {
+    $('persona').innerHTML = '';
+    for (const p of Object.values(eng().PERSONAS)) {
       const o = document.createElement('option');
       o.value = p.id; o.textContent = p.label;
       $('persona').appendChild(o);
     }
-    $('persona').value = store.get('persona', 'hnic90');
-    const upd = () => { $('blurb').textContent = persona().blurb; store.set('persona', $('persona').value); fillVoiceSelects(); };
-    $('persona').addEventListener('change', upd);
-    upd();
+    const saved = store.get(`${app.sport}.persona`, sport().defaultPersona);
+    $('persona').value = eng().PERSONAS[saved] ? saved : sport().defaultPersona;
+    onPersonaChange();
   }
 
   function englishVoices() {
@@ -135,32 +190,38 @@
   // ---------------------------------------------------------------------------
 
   function gameTag(g) {
-    const st = g.gameState;
-    if (st === 'LIVE' || st === 'CRIT') return ['LIVE', 'live'];
-    if (st === 'FINAL' || st === 'OFF') return [`Final ${g.awayTeam?.score ?? ''}–${g.homeTeam?.score ?? ''}`, ''];
-    if (g.startTimeUTC) return [new Date(g.startTimeUTC).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), ''];
-    return [st || '', ''];
+    if (g.status === 'live') return ['LIVE', 'live'];
+    if (g.status === 'final') return [`Final ${g.awayScore ?? ''}–${g.homeScore ?? ''}`, ''];
+    if (g.detailed && /postpon|suspend|cancel/i.test(g.detailed)) return [g.detailed, ''];
+    if (g.start) return [new Date(g.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), ''];
+    return ['', ''];
   }
 
+  let loadSeq = 0;
   async function loadGames() {
     const date = $('date').value || todayLocal();
     const box = $('games');
+    const seq = ++loadSeq;
     box.innerHTML = '<div class="status">Loading…</div>';
     try {
-      const data = await getJSON(`/api/nhl/score/${date}`);
-      const games = data.games || [];
-      box.innerHTML = games.length ? '' : '<div class="status">No NHL games on this date. Try another day, or the demo game.</div>';
+      const games = await sport().listGames(date);
+      if (seq !== loadSeq) return; // sport or date changed meanwhile
+      box.innerHTML = games.length ? '' : `<div class="status">No ${sport().label.toLowerCase()} games on this date. Try another day, or the demo game.</div>`;
       for (const g of games) {
         const [tag, cls] = gameTag(g);
         const b = document.createElement('button');
         b.className = 'game';
-        b.innerHTML = `<span>${g.awayTeam?.abbrev ?? '?'} @ ${g.homeTeam?.abbrev ?? '?'}</span><span class="tag ${cls}">${tag}</span>`;
-        b.onclick = () => selectGame({ id: g.id, state: g.gameState, label: `${g.awayTeam?.abbrev} @ ${g.homeTeam?.abbrev}` }, b);
+        b.innerHTML = `<span>${esc(g.label)}${g.note ? ` <span class="note">${esc(g.note)}</span>` : ''}</span><span class="tag ${cls}">${esc(tag)}</span>`;
+        b.onclick = () => selectGame({ id: g.id, status: g.status, label: g.label }, b);
         box.appendChild(b);
       }
     } catch (e) {
-      box.innerHTML = `<div class="status err">Couldn't load games: ${e.message}. The demo game works offline.</div>`;
+      if (seq === loadSeq) box.innerHTML = `<div class="status err">Couldn't load games: ${esc(e.message)}. The demo game works offline.</div>`;
     }
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   function selectGame(sel, btn) {
@@ -168,9 +229,9 @@
     app.selected = sel;
     document.querySelectorAll('.game').forEach((b) => b.classList.remove('sel'));
     if (btn) btn.classList.add('sel');
-    const finished = sel.demo || sel.state === 'FINAL' || sel.state === 'OFF';
+    const finished = sel.demo || sel.status === 'final';
     $('startBtn').disabled = false;
-    $('startBtn').textContent = finished ? 'Replay' : sel.state === 'LIVE' || sel.state === 'CRIT' ? 'Start live' : 'Wait for puck drop';
+    $('startBtn').textContent = finished ? 'Replay' : sel.status === 'live' ? 'Start live' : `Wait for ${app.sport === 'mlb' ? 'first pitch' : 'puck drop'}`;
     $('speed').classList.toggle('hidden', !finished);
     $('delayBox').classList.toggle('hidden', finished);
     $('syncHint').classList.toggle('hidden', finished);
@@ -182,9 +243,8 @@
   // ---------------------------------------------------------------------------
 
   function updateBoard(ev) {
-    const s = app.state, g = app.game;
-    $('score').innerHTML = `${g.away.abbrev} ${s.score.away} – ${s.score.home} ${g.home.abbrev}` +
-      `<small id="period">${B.periodLabel(s.period, s.periodType)}${ev && ev.timeRemaining ? ' · ' + ev.timeRemaining : ''} · SOG ${s.sog.away}–${s.sog.home}</small>`;
+    const b = eng().boardText(app.state, ev);
+    $('score').innerHTML = `${esc(b.main)} <small id="period">${esc(b.sub)}</small>`;
   }
 
   function logRow(el) {
@@ -197,7 +257,7 @@
     const row = document.createElement('div');
     row.className = 'ev';
     const span = document.createElement('span');
-    span.textContent = B.describe(ev);
+    span.textContent = eng().describe(ev, app.state);
     if (app.mode === 'live') {
       const b = document.createElement('button');
       b.textContent = 'sync';
@@ -292,8 +352,8 @@
   // ---------------------------------------------------------------------------
 
   function setupGame(pbp) {
-    app.game = B.buildGame(pbp);
-    app.state = new B.GameState(app.game);
+    app.game = eng().buildGame(pbp);
+    app.state = new (eng().GameState)(app.game);
     app.seen = new Set();
     app.queue = []; app.pending = []; app.recent = [];
     app.finished = false;
@@ -304,16 +364,17 @@
     for (const ev of events) {
       app.seen.add(ev.id);
       app.state.apply(ev);
-      const lines = B.templateLines(ev, persona(), app.state);
+      const lines = eng().templateLines(ev, persona(), app.state);
       logEvent(ev, arrivedAt);
       updateBoard(ev);
       if (claude) {
-        app.pending.push({ ev, arrivedAt, fallback: lines });
+        app.pending.push({ ev, arrivedAt, fallback: lines, desc: eng().describe(ev, app.state) });
         if (ev.type === 'goal') flushClaude();
       } else {
         enqueue(lines, arrivedAt);
       }
       if (ev.type === 'game-end') app.finished = true;
+      if (claude && ev.type === 'game-end') flushClaude();
     }
   }
 
@@ -323,16 +384,17 @@
     const worth = app.joining || batch.some((b) => b.ev.priority >= 3) || Date.now() - app.lastLineAt > 25000;
     if (!worth) return; // faceoffs only: not worth a request
     app.inFlight = true;
-    const s = app.state, g = app.game, p = persona();
+    const g = app.game, p = persona();
     const arrivedAt = batch.length ? batch[0].arrivedAt : Date.now();
     const maxPri = Math.max(1, ...batch.map((b) => b.ev.priority));
     const payload = {
+      sport: app.sport,
       persona: { label: p.label, style: p.llmStyle },
       game: { away: g.away.name, home: g.home.name, venue: g.venue },
-      state: { awayScore: s.score.away, homeScore: s.score.home, awaySog: s.sog.away, homeSog: s.sog.home, period: B.periodLabel(s.period, s.periodType) },
+      situation: eng().situation(app.state),
       joining: app.joining,
       recent: app.recent.slice(-12),
-      events: batch.map((b) => B.describe(b.ev)),
+      events: batch.map((b) => b.desc),
     };
     try {
       const r = await postJSON('/api/commentary', payload);
@@ -359,16 +421,15 @@
     app.mode = 'live';
     const id = app.selected.id;
     setStatus('Connecting to the NHL feed…');
-    const pbp = await getJSON(`/api/nhl/gamecenter/${id}/play-by-play`);
+    const pbp = await getJSON(sport().feedUrl(id));
     setupGame(pbp);
-    const evs = B.normalizePlays(pbp, app.game);
-    const inProgress = evs.some((e) => e.type !== 'period-start' && e.type !== 'faceoff');
-    if (inProgress) {
+    const evs = eng().normalizePlays(pbp, app.game);
+    if (eng().inProgress(evs)) {
       evs.forEach((e) => app.seen.add(e.id));
       app.state.seed(evs);
       updateBoard(evs[evs.length - 1]);
       if ($('source').value === 'claude') { app.joining = true; flushClaude(); }
-      else enqueue([{ speaker: 'pbp', text: B.joinLine(persona(), app.state), excitement: 0, priority: 9 }], Date.now() - app.delay * 1000);
+      else enqueue([{ speaker: 'pbp', text: eng().joinLine(persona(), app.state), excitement: 0, priority: 9 }], Date.now() - app.delay * 1000);
     } else {
       process(evs, Date.now());
     }
@@ -377,13 +438,12 @@
     const poll = async () => {
       if (!app.running) return;
       try {
-        const data = await getJSON(`/api/nhl/gamecenter/${id}/play-by-play`);
-        const fresh = B.buildGame(data);
-        if (fresh.roster.size) { app.game.roster = fresh.roster; }
+        const data = await getJSON(sport().feedUrl(id));
+        eng().refreshGame(app.game, data);
         const now = Date.now();
-        const added = B.normalizePlays(data, app.game).filter((e) => !app.seen.has(e.id));
+        const added = eng().normalizePlays(data, app.game).filter((e) => !app.seen.has(e.id));
         if (added.length) process(added, now);
-        if ((data.gameState === 'FINAL' || data.gameState === 'OFF') && !app.finished) app.finished = true;
+        if (sport().feedStatus(data) === 'final' && !app.finished) app.finished = true;
         if (!app.finished) setStatus(`Live: ${app.game.away.name} at ${app.game.home.name}. Feed updated ${new Date().toLocaleTimeString()}.`);
       } catch (e) {
         setStatus(`Feed hiccup (${e.message}); retrying…`, true);
@@ -400,9 +460,9 @@
   async function startReplay() {
     app.mode = 'replay';
     setStatus('Loading game…');
-    const pbp = app.selected.demo ? await getJSON('demo-game.json') : await getJSON(`/api/nhl/gamecenter/${app.selected.id}/play-by-play`);
+    const pbp = await getJSON(app.selected.demo ? sport().demoUrl : sport().feedUrl(app.selected.id));
     setupGame(pbp);
-    const evs = B.normalizePlays(pbp, app.game);
+    const evs = eng().normalizePlays(pbp, app.game);
     const speed = Number($('speed').value) || 4;
     let i = 0, clock = -2, last = Date.now();
     setStatus(`Replay at ${speed}×: ${app.game.away.name} at ${app.game.home.name}.`);
@@ -411,8 +471,11 @@
       const now = Date.now();
       clock += ((now - last) / 1000) * speed;
       last = now;
+      // Skip dead air (between innings, long stoppages) once the booth is quiet.
+      const quiet = !app.queue.length && !app.speaking && !app.inFlight && !app.pending.length;
+      if (quiet && i < evs.length && evs[i].replayAt - clock > 3 * speed) clock = evs[i].replayAt - speed;
       const out = [];
-      while (i < evs.length && evs[i].gameSeconds <= clock) out.push(evs[i++]);
+      while (i < evs.length && evs[i].replayAt <= clock) out.push(evs[i++]);
       if (out.length) process(out, now);
       if (i >= evs.length) app.finished = true;
     };
@@ -434,22 +497,22 @@
     app.timers.push(setInterval(flushClaude, BATCH_MS));
     const sel = app.selected;
     try {
-      if (sel.demo || sel.state === 'FINAL' || sel.state === 'OFF') await startReplay();
-      else if (sel.state === 'LIVE' || sel.state === 'CRIT') await startLive();
-      else await waitForPuckDrop();
+      if (sel.demo || sel.status === 'final') await startReplay();
+      else if (sel.status === 'live') await startLive();
+      else await waitForStart();
     } catch (e) {
       setStatus(`Couldn't start: ${e.message}`, true);
       stop();
     }
   }
 
-  async function waitForPuckDrop() {
-    setStatus('Waiting for puck drop. Leave this tab open.');
+  async function waitForStart() {
+    setStatus(`Waiting for ${app.sport === 'mlb' ? 'first pitch' : 'puck drop'}. Leave this tab open.`);
     const check = async () => {
       if (!app.running) return;
       try {
-        const pbp = await getJSON(`/api/nhl/gamecenter/${app.selected.id}/play-by-play`);
-        if (pbp.gameState === 'LIVE' || pbp.gameState === 'CRIT') { app.selected.state = pbp.gameState; return startLive(); }
+        const feed = await getJSON(sport().feedUrl(app.selected.id));
+        if (sport().feedStatus(feed) === 'live') { app.selected.status = 'live'; return startLive(); }
       } catch { /* keep waiting */ }
       app.timers.push(setTimeout(check, 30000));
     };
@@ -476,7 +539,10 @@
       setStatus('This browser has no speech synthesis. Try Chrome, Edge or Safari.', true);
       return;
     }
-    initPersonas();
+    app.sport = SPORTS[store.get('sport', 'nhl')] ? store.get('sport', 'nhl') : 'nhl';
+    document.querySelectorAll('[data-sport]').forEach((b) => b.addEventListener('click', () => switchSport(b.dataset.sport)));
+    $('persona').addEventListener('change', onPersonaChange);
+    applySport();
     speechSynthesis.getVoices();
     speechSynthesis.addEventListener('voiceschanged', fillVoiceSelects);
     initStatus();
@@ -485,9 +551,29 @@
     $('date').value = todayLocal();
     $('loadGames').onclick = loadGames;
     $('date').onchange = loadGames;
-    $('demoBtn').onclick = () => selectGame({ demo: true, id: 'demo', label: 'Demo: MTL @ TOR (fictional)' });
+    $('demoBtn').onclick = () => selectGame({ demo: true, id: 'demo', label: sport().demoLabel });
     $('startBtn').onclick = start;
     $('stopBtn').onclick = () => stop();
+    loadGames();
+  }
+
+  function applySport() {
+    document.querySelectorAll('[data-sport]').forEach((b) => b.classList.toggle('on', b.dataset.sport === app.sport));
+    $('syncHintSport').innerHTML = sport().syncHint;
+    initPersonas();
+  }
+
+  function switchSport(id) {
+    if (id === app.sport || !SPORTS[id]) return;
+    if (app.running) stop();
+    app.sport = id;
+    store.set('sport', id);
+    app.selected = null;
+    $('startBtn').disabled = true;
+    $('score').innerHTML = '—';
+    $('log').innerHTML = '';
+    setStatus('Select a game.');
+    applySport();
     loadGames();
   }
 
