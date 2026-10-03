@@ -11,7 +11,7 @@
   const LOG_MAX = 300;
 
   // Shown on the page and in the log, to confirm a reload picked up new code.
-  const BUILD = 'result-timing-2';
+  const BUILD = 'tv-marker-3';
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem('booth.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -44,7 +44,7 @@
     mlb: {
       label: 'Baseball', engine: window.BallBooth, defaultPersona: 'cookie',
       demoUrl: 'mlb-demo-game.json', demoLabel: 'Demo: BOS @ TOR (fictional)',
-      syncHint: 'When the pitcher delivers on TV, click <b>sync</b> next to that pitch below. Calls are then timed to when each pitch happened, so one sync should hold; re-sync only if you pause the TV.',
+      syncHint: 'Press <b>Space</b> (or the Sync button) the moment a pitch reaches the catcher on TV. The highlighted row is what your TV should be showing; if it matches, leave it alone. Re-sync after a commercial break or if you pause the TV.',
       async listGames(date) {
         const data = await getJSON(`/api/mlb/v1/schedule?sportId=1&date=${date}&hydrate=team`);
         const games = (data.dates || []).flatMap((d) => d.games || []);
@@ -71,6 +71,7 @@
     timers: [], delay: 20, finished: false,
     spoken: [], events: [], // recent history for flags
     lags: [], lastPollAt: 0,
+    pitches: [], onTv: null, // recent live pitches with their rows, for the TV marker
     late: [], // ms each recent pitch reached the booth after its TV moment
     macVoices: [], // from the server's `say -v ?`
   };
@@ -402,6 +403,61 @@
     }
     row.appendChild(span);
     logRow(row);
+    return row;
+  }
+
+  // ---------------------------------------------------------------------------
+  // "On your TV now" marker and Space-bar sync (baseball, live)
+  // ---------------------------------------------------------------------------
+
+  // The pitch your TV should be showing right now, given the sync setting.
+  function pitchOnTv(now) {
+    const tvNow = now - app.delay * 1000;
+    let best = null;
+    for (const p of app.pitches) if (p.wall <= tvNow && (!best || p.wall > best.wall)) best = p;
+    return best;
+  }
+
+  function updateTvMarker() {
+    if (app.mode !== 'live' || !app.pitches.length) return;
+    const p = pitchOnTv(Date.now());
+    if (p === app.onTv) return;
+    if (app.onTv && app.onTv.row) app.onTv.row.classList.remove('ontv');
+    app.onTv = p;
+    if (p && p.row) p.row.classList.add('ontv');
+  }
+
+  // You press Space as a pitch reaches the catcher on TV. Pick the pitch the
+  // booth expected your TV to be showing about now (nearest to pitch time +
+  // current setting), so you never have to find the right row.
+  function spaceSync() {
+    if (app.mode !== 'live' || app.sport !== 'mlb') return;
+    const now = Date.now();
+    const happened = app.pitches.filter((p) => p.wall <= now);
+    if (!happened.length) {
+      setStatus('No pitches in the data yet. If your TV is ahead of MLB\'s data, pause the TV for ~15s and press Space on the next pitch.', true);
+      return;
+    }
+    const expected = (p) => p.wall + app.delay * 1000;
+    let best = happened[0];
+    for (const p of happened) if (Math.abs(expected(p) - now) < Math.abs(expected(best) - now)) best = p;
+    const latest = happened.reduce((a, b) => (b.wall > a.wall ? b : a));
+    // Your TV has moved past every pitch in the data: it's showing a pitch MLB hasn't sent yet.
+    if (latest === best && now - expected(latest) > 12000) {
+      log('sync', { delay: app.delay, anchor: 'space', result: 'tv ahead of data' });
+      setStatus(`Your TV seems to be ahead of MLB's data. Pause the TV for ~${Math.round((now - expected(latest)) / 1000) + 5}s, then press Space on the next pitch.`, true);
+      return;
+    }
+    setDelay(Math.round((now - best.wall) / 1000));
+    log('sync', { delay: app.delay, event: best.desc, anchor: 'space' });
+    updateTvMarker();
+    flashSync(`Synced to: ${best.desc.replace(/^\[\w+\]\s*/, '')}`);
+  }
+
+  function flashSync(text) {
+    $('syncNote').textContent = text;
+    clearTimeout(flashSync.t);
+    flashSync.t = setTimeout(() => { $('syncNote').textContent = ''; }, 6000);
   }
 
   function logLine(line) {
@@ -530,6 +586,7 @@
     app.queue = []; app.pending = []; app.recent = [];
     app.finished = false;
     app.lags = []; app.lastPollAt = 0; app.late = [];
+    app.pitches = []; app.onTv = null;
   }
 
   function process(events, arrivedAt) {
@@ -539,7 +596,11 @@
       app.state.apply(ev);
       const lines = eng().templateLines(ev, persona(), app.state);
       const desc = eng().describe(ev, app.state);
-      logEvent(ev, arrivedAt, desc);
+      const row = logEvent(ev, arrivedAt, desc);
+      if (app.mode === 'live' && ev.type === 'pitch' && ev.wall) {
+        app.pitches.push({ id: ev.id, wall: ev.wall, desc, row });
+        if (app.pitches.length > 60) app.pitches.shift();
+      }
       updateBoard(ev);
       app.events.push(desc);
       if (app.events.length > 20) app.events.shift();
@@ -691,6 +752,7 @@
     stopSpeech();
     app.speaking = null;
     app.timers.push(ticker.every(200, tick));
+    app.timers.push(ticker.every(500, updateTvMarker));
     app.timers.push(ticker.every(BATCH_MS, flushClaude));
     const sel = app.selected;
     log('start', {
@@ -757,7 +819,10 @@
     }));
     $('flagBtn').onclick = flag;
     $('flagNote').addEventListener('keydown', (e) => { if (e.key === 'Enter') flag(); });
+    $('spaceSync').onclick = spaceSync;
     document.addEventListener('keydown', (e) => {
+      // Space always means sync, even if a button (Stop, −5…) still has focus.
+      if (e.key === ' ' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); spaceSync(); return; }
       if (e.key === 'f' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); $('flagNote').focus(); }
     });
     $('date').value = todayLocal();

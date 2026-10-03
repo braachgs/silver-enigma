@@ -45,6 +45,9 @@
     .log { max-height: 460px; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: .3rem; }
     .ev { font-size: .8rem; color: var(--dim); display: flex; gap: .5rem; align-items: baseline; }
     .ev button { font-size: .7rem; padding: .1rem .4rem; }
+    .ev.ontv { color: var(--text); background: color-mix(in srgb, var(--accent2) 18%, transparent); border-radius: 6px; padding: .15rem .3rem; }
+    .ev.ontv::before { content: '▶ on your TV now'; font-size: .7rem; font-weight: 700; color: var(--accent2); white-space: nowrap; }
+    #syncNote { color: var(--ok); font-size: .85rem; }
     .line { padding: .35rem .6rem; border-left: 3px solid var(--pbp); background: var(--surface2); border-radius: 0 6px 6px 0; }
     .line.colour { border-color: var(--colour); }
     .line.huge { font-weight: 700; }
@@ -124,6 +127,8 @@
       <button data-d="-5">−5</button><button data-d="-1">−1</button>
       <span class="delay" id="delay">20s</span>
       <button data-d="1">+1</button><button data-d="5">+5</button>
+      <button id="spaceSync" class="primary" title="Press as a pitch reaches the catcher on TV (or press Space)">Sync (Space)</button>
+      <span id="syncNote"></span>
     </div>
     <p class="hint" id="syncHint">
       Live sync: the data feed and your TV are rarely in step. <span id="syncHintSport"></span>
