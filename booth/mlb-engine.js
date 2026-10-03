@@ -141,13 +141,14 @@
       const pushIntro = (time) => {
         if (pushedIntro) return;
         pushedIntro = true;
-        evs.push({ ...common, id: `${ab}-atbat`, type: 'atbat', sortOrder: ab * 1000 + 1 + introAt - 0.5, replayAt: at(time) });
+        evs.push({ ...common, id: `${ab}-atbat`, type: 'atbat', sortOrder: ab * 1000 + 1 + introAt - 0.5, replayAt: at(time), wall: ts(time) });
       };
 
       events.forEach((pe, i) => {
         const d = pe.details || {};
         if (i === introAt) pushIntro(pe.startTime || a.startTime);
-        const base = { ...common, sortOrder: ab * 1000 + 1 + i, replayAt: at(pe.startTime) };
+        // wall: when it happened (ms since epoch), for measuring feed lag.
+        const base = { ...common, sortOrder: ab * 1000 + 1 + i, replayAt: at(pe.startTime), wall: ts(pe.startTime) };
         if (pe.isPitch) {
           const desc = (d.call && d.call.description) || d.description || '';
           const code = (d.call && d.call.code) || d.code;
@@ -181,7 +182,7 @@
         const lastDesc = lastPitch ? ((lastPitch.details && lastPitch.details.call && lastPitch.details.call.description) || '') : '';
         evs.push({
           ...common, id: `${ab}-result`, type: 'result', sortOrder: ab * 1000 + 999,
-          replayAt: at(a.endTime || play.playEndTime),
+          replayAt: at(a.endTime || play.playEndTime), wall: ts(a.endTime || play.playEndTime),
           eventType: r.eventType, event: r.event || '', description: r.description || '',
           rbi: r.rbi || 0,
           score: r.awayScore != null && r.homeScore != null ? { away: r.awayScore, home: r.homeScore } : null,
@@ -385,7 +386,9 @@
     const arrow = state.top ? '▲' : '▼';
     return {
       main: `${g.away.abbrev} ${state.score.away} – ${state.score.home} ${g.home.abbrev}`,
-      sub: state.over ? 'Final' : `${arrow} ${ordinal(state.inning)} · ${state.outs} out · ${state.balls}-${state.strikes} · ${basesText(state)}`,
+      sub: state.over ? 'Final'
+        : state.outs >= 3 ? `${state.top ? 'Middle' : 'End'} of the ${ordinal(state.inning)}`
+          : `${arrow} ${ordinal(state.inning)} · ${state.outs} out · ${state.balls}-${state.strikes} · ${basesText(state)}`,
     };
   }
 

@@ -151,3 +151,20 @@ test('live feed: in-progress at-bat produces intro and pitches but no result yet
   assert.ok(!evs.some((e) => e.type === 'game-end'));
   assert.ok(B.inProgress(evs));
 });
+
+test('events carry wall-clock times for feed-lag measurement; board shows inning breaks', () => {
+  const g = B.buildGame(feed);
+  const evs = B.normalizePlays(feed, g);
+  const pitches = evs.filter((e) => e.type === 'pitch');
+  assert.ok(pitches.length && pitches.every((e) => Number.isFinite(e.wall)));
+  assert.ok(evs.filter((e) => e.type === 'result').every((e) => Number.isFinite(e.wall)));
+  const state = new B.GameState(g);
+  for (const ev of evs) {
+    state.apply(ev);
+    if (ev.type === 'result' && ev.outsAfter === 3 && ev.top) {
+      assert.match(B.boardText(state).sub, /^Middle of the \d+(st|nd|rd|th)$/);
+      return;
+    }
+  }
+  assert.fail('no half-inning ended');
+});

@@ -67,6 +67,7 @@
     pending: [], inFlight: false, recent: [], joining: false, lastLineAt: 0,
     timers: [], delay: store.get('delay', 20), finished: false,
     spoken: [], events: [], // recent history for flags
+    lags: [], lastPollAt: 0,
   };
 
   // ---------------------------------------------------------------------------
@@ -119,6 +120,43 @@
   window.addEventListener('pagehide', flushLog);
   window.addEventListener('error', (e) => log('error', { message: e.message, where: `${e.filename}:${e.lineno}` }));
   window.addEventListener('unhandledrejection', (e) => log('error', { message: String((e.reason && e.reason.message) || e.reason) }));
+
+  // Background-safe clock. Browsers throttle timers in hidden or covered tabs
+  // (Chrome: down to once a minute), which made the feed arrive in bursts.
+  // Worker timers aren't throttled that way, so a worker drives a heartbeat
+  // and every booth timer runs off it.
+  const ticker = (() => {
+    const jobs = new Set();
+    const beat = () => {
+      const now = Date.now();
+      for (const j of [...jobs]) {
+        if (now < j.next || !jobs.has(j)) continue;
+        if (j.every) j.next = now + j.every; else jobs.delete(j);
+        try { j.fn(); } catch (e) { log('error', { message: `timer: ${e.message}` }); }
+      }
+    };
+    try {
+      const src = 'setInterval(() => postMessage(0), 100);';
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      w.onmessage = beat;
+    } catch {
+      setInterval(beat, 100);
+    }
+    return {
+      every(ms, fn) { const j = { every: ms, next: Date.now() + ms, fn }; jobs.add(j); return j; },
+      after(ms, fn) { const j = { next: Date.now() + ms, fn }; jobs.add(j); return j; },
+      cancel(j) { jobs.delete(j); },
+    };
+  })();
+
+  document.addEventListener('visibilitychange', () => log('visibility', { state: document.visibilityState }));
+
+  // Median of recent feed lags (arrival minus when it happened), in seconds.
+  function feedLag() {
+    if (!app.lags.length) return null;
+    const s = [...app.lags].sort((a, b) => a - b);
+    return Math.round(s[Math.floor(s.length / 2)] / 1000);
+  }
 
   function flag() {
     const note = $('flagNote').value.trim();
@@ -411,6 +449,7 @@
     app.seen = new Set();
     app.queue = []; app.pending = []; app.recent = [];
     app.finished = false;
+    app.lags = []; app.lastPollAt = 0;
   }
 
   function process(events, arrivedAt) {
@@ -424,7 +463,12 @@
       updateBoard(ev);
       app.events.push(desc);
       if (app.events.length > 20) app.events.shift();
-      log('event', { id: ev.id, type: ev.type, desc, arrivedAt, situation: eng().situation(app.state) });
+      const lagMs = app.mode === 'live' && ev.wall ? arrivedAt - ev.wall : null;
+      if (lagMs != null && ev.type === 'pitch' && lagMs > -60000 && lagMs < 600000) {
+        app.lags.push(lagMs);
+        if (app.lags.length > 15) app.lags.shift();
+      }
+      log('event', { id: ev.id, type: ev.type, desc, arrivedAt, feedLagMs: lagMs, situation: eng().situation(app.state) });
       if (claude) {
         app.pending.push({ ev, arrivedAt, fallback: lines, desc });
         if (ev.type === 'goal') flushClaude();
@@ -498,20 +542,25 @@
     const poll = async () => {
       if (!app.running) return;
       try {
+        const t0 = Date.now();
         const data = await getJSON(sport().feedUrl(id));
         eng().refreshGame(app.game, data);
         const now = Date.now();
         const added = eng().normalizePlays(data, app.game).filter((e) => !app.seen.has(e.id));
         if (added.length) process(added, now);
+        log('poll', { ms: now - t0, sinceLast: app.lastPollAt ? t0 - app.lastPollAt : null, added: added.length, hidden: document.hidden });
+        app.lastPollAt = t0;
         if (sport().feedStatus(data) === 'final' && !app.finished) { app.finished = true; log('final', { situation: eng().situation(app.state) }); }
-        if (!app.finished) setStatus(`Live: ${app.game.away.name} at ${app.game.home.name}. Feed updated ${new Date().toLocaleTimeString()}.`);
+        const lag = feedLag();
+        if (!app.finished) setStatus(`Live: ${app.game.away.name} at ${app.game.home.name}. Feed updated ${new Date().toLocaleTimeString()}.` +
+          (lag != null ? ` MLB's feed is running about ${lag}s behind live.` : ''));
       } catch (e) {
         log('warn', { message: `feed poll failed: ${e.message}` });
         setStatus(`Feed hiccup (${e.message}); retrying…`, true);
       }
-      if (app.running && !app.finished) app.timers.push(setTimeout(poll, POLL_MS));
+      if (app.running && !app.finished) app.timers.push(ticker.after(POLL_MS, poll));
     };
-    app.timers.push(setTimeout(poll, POLL_MS));
+    app.timers.push(ticker.after(POLL_MS, poll));
   }
 
   // ---------------------------------------------------------------------------
@@ -540,7 +589,7 @@
       if (out.length) process(out, now);
       if (i >= evs.length) app.finished = true;
     };
-    app.timers.push(setInterval(step, 250));
+    app.timers.push(ticker.every(250, step));
   }
 
   // ---------------------------------------------------------------------------
@@ -554,8 +603,8 @@
     $('log').innerHTML = '';
     speechSynthesis.cancel();
     app.speaking = null;
-    app.timers.push(setInterval(tick, 200));
-    app.timers.push(setInterval(flushClaude, BATCH_MS));
+    app.timers.push(ticker.every(200, tick));
+    app.timers.push(ticker.every(BATCH_MS, flushClaude));
     const sel = app.selected;
     log('start', {
       sport: app.sport, game: sel.label, gameId: sel.id, status: sel.status || 'demo', persona: $('persona').value,
@@ -581,7 +630,7 @@
         const feed = await getJSON(sport().feedUrl(app.selected.id));
         if (sport().feedStatus(feed) === 'live') { app.selected.status = 'live'; return startLive(); }
       } catch { /* keep waiting */ }
-      app.timers.push(setTimeout(check, 30000));
+      app.timers.push(ticker.after(30000, check));
     };
     check();
   }
@@ -589,7 +638,7 @@
   function stop(keepStatus) {
     if (app.running) log('stop', { situation: app.state ? eng().situation(app.state) : '' });
     app.running = false;
-    app.timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+    app.timers.forEach((t) => ticker.cancel(t));
     app.timers = [];
     app.queue = []; app.pending = [];
     speechSynthesis.cancel();
