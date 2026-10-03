@@ -19,6 +19,8 @@ import gzip
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -46,6 +48,77 @@ MODEL = os.environ.get("BOOTH_MODEL", "claude-opus-5-5")
 LIVE_FEED = re.compile(r"(?:gamecenter/(\d+)/play-by-play|game/(\d+)/feed/live)$")
 FEED_SNAPSHOT_SECONDS = 60
 ECHO_KINDS = {"error", "warn", "flag"}
+
+
+# ---------------------------------------------------------------------------
+# Mac voices (macOS `say`)
+# ---------------------------------------------------------------------------
+
+SAY_VOICE_LINE = re.compile(r"^(.+?)\s+([a-z]{2,3}[_-][A-Za-z0-9_-]+)\s+#")
+
+
+class MacVoice:
+    """Speaks through the macOS `say` command, one line at a time.
+
+    With no voice name, `say` uses the System Voice from System Settings >
+    Accessibility > Spoken Content. That can be a Siri voice, which `say -v`
+    can't select by name and browsers can't use at all.
+    """
+
+    def __init__(self, binary=None):
+        self.binary = binary if binary is not None else shutil.which("say")
+        self.lock = threading.Lock()
+        self.proc = None
+        self.proc_id = None
+        self._voices = None
+
+    @property
+    def available(self):
+        return bool(self.binary)
+
+    def voices(self):
+        if self._voices is None and self.available:
+            try:
+                out = subprocess.run([self.binary, "-v", "?"], capture_output=True, text=True, timeout=10).stdout
+            except (OSError, subprocess.SubprocessError):
+                out = ""
+            found = []
+            for line in out.splitlines():
+                m = SAY_VOICE_LINE.match(line.strip())
+                if m and m.group(2).lower().startswith("en"):
+                    found.append({"name": m.group(1).strip(), "lang": m.group(2)})
+            self._voices = found
+        return self._voices or []
+
+    def speak(self, text, voice="", rate=None, line_id=None):
+        """Say one line; returns when it has been spoken (or stopped)."""
+        args = [self.binary]
+        if voice:
+            args += ["-v", voice]
+        if rate:
+            args += ["-r", str(int(max(90, min(400, rate))))]
+        args.append(" " + text if text.startswith("-") else text)
+        with self.lock:
+            # Own process group, so stop() takes down anything `say` spawned too.
+            self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, start_new_session=True)
+            self.proc_id = line_id
+            try:
+                _, err = self.proc.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                _, err = self.proc.communicate()
+            code, self.proc, self.proc_id = self.proc.returncode, None, None
+        if code not in (0, -15, -9) and err:
+            raise RuntimeError(err.decode("utf-8", "replace").strip()[:300])
+
+    def stop(self, up_to=None):
+        """Stop the current line, but only if it's one the page meant to stop."""
+        proc, pid = self.proc, self.proc_id
+        if proc and (up_to is None or pid is None or pid <= up_to):
+            try:
+                os.killpg(proc.pid, 15)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +390,7 @@ class Commentator:
 class Handler(BaseHTTPRequestHandler):
     commentator = None
     log = SessionLog()  # replaced in main(); a no-op log for tests
+    mac = MacVoice()
     server_version = "BroadcastBooth/1.0"
 
     def log_message(self, fmt, *args):
@@ -342,7 +416,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/status":
             c = self.commentator
             self.send_json(200, {"llm": c.available, "model": MODEL if c.available else None, "llmError": c.error,
-                                 "logFile": str(self.log.path) if self.log.path else None})
+                                 "logFile": str(self.log.path) if self.log.path else None,
+                                 "macVoices": self.mac.available})
+        elif path == "/api/voices":
+            self.send_json(200, {"available": self.mac.available, "voices": self.mac.voices()})
         elif path.startswith("/api/nhl/"):
             if query:
                 return self.send(*bad_request())
@@ -368,6 +445,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/log":
             return self.post_log()
+        if self.path in ("/api/say", "/api/say/stop"):
+            return self.post_say()
         if self.path != "/api/commentary":
             return self.send_json(404, {"error": "not found"})
         if not self.commentator.available:
@@ -381,6 +460,24 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"lines": lines, "seconds": seconds})
         except Exception as e:  # report to the page; it falls back to templates
             self.log.write("warn", "claude", message=f"{type(e).__name__}: {e}")
+            self.send_json(502, {"error": f"{type(e).__name__}: {e}"})
+
+    def post_say(self):
+        if not self.mac.available:
+            return self.send_json(503, {"error": "Mac voices need macOS (the `say` command)"})
+        try:
+            body = self.read_json()
+            if self.path == "/api/say/stop":
+                self.mac.stop(body.get("upTo"))
+                return self.send_json(200, {"ok": True})
+            text = str(body.get("text") or "").strip()[:600]
+            if text:
+                started = time.monotonic()
+                self.mac.speak(text, str(body.get("voice") or ""), body.get("rate"), body.get("id"))
+                return self.send_json(200, {"ok": True, "seconds": round(time.monotonic() - started, 2)})
+            self.send_json(200, {"ok": True})
+        except Exception as e:
+            self.log.write("warn", "say", message=f"{type(e).__name__}: {e}")
             self.send_json(502, {"error": f"{type(e).__name__}: {e}"})
 
     def post_log(self):
@@ -410,6 +507,8 @@ def main(argv=None):
     print(f"Broadcast Booth on http://localhost:{args.port}  |  {llm}", file=sys.stderr)
     if Handler.log.path:
         print(f"Logging to {Handler.log.path}  (warnings, errors and flags also appear below)", file=sys.stderr)
+    if Handler.mac.available:
+        print("Mac voices available (the page's 'Voices from' menu); the System Voice can be a Siri voice", file=sys.stderr)
     Handler.log.write("server-start", model=MODEL if Handler.commentator.available else None)
     try:
         httpd.serve_forever()

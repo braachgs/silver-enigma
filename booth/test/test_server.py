@@ -3,6 +3,7 @@ import gzip
 import json
 import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -111,7 +112,8 @@ class SessionLogTest(unittest.TestCase):
             log.write("line", "browser", text="Ball one.")
             log.write("warn", "relay", message="MLB 503 for /x")
             log.write("flag", "browser", note="count wrong", situation="Top 3rd", recentLines=["Ball. One and one."])
-            rows = [json.loads(x) for x in open(log.path)]
+            with open(log.path) as fh:
+                rows = [json.loads(x) for x in fh]
             self.assertEqual([r["kind"] for r in rows], ["line", "warn", "flag"])
             self.assertEqual(rows[0]["text"], "Ball one.")
             echoed = out.getvalue()
@@ -133,6 +135,64 @@ class SessionLogTest(unittest.TestCase):
         log.write("error", message="still fine")
         log.snapshot_feed("/api/mlb/v1.1/game/1/feed/live", b"{}")
         self.assertIsNone(log.path)
+
+
+FAKE_SAY = """#!/bin/sh
+if [ "$1" = "-v" ] && [ "$2" = "?" ]; then
+  printf 'Albert              en_US    # Hello! My name is Albert.\\n'
+  printf 'Eddy (English (UK)) en_GB    # Hello! My name is Eddy.\\n'
+  printf 'Fiona (Enhanced)    en-scotland # Hello! My name is Fiona.\\n'
+  printf 'Amelie              fr_CA    # Bonjour, je m appelle Amelie.\\n'
+  exit 0
+fi
+echo "$@" >> "$SAY_LOG"
+case "$*" in *slow*) sleep 5;; esac
+"""
+
+
+class MacVoiceTest(unittest.TestCase):
+    def setUp(self):
+        import os
+        import tempfile
+        self.dir = tempfile.TemporaryDirectory()
+        self.bin = os.path.join(self.dir.name, "say")
+        with open(self.bin, "w") as fh:
+            fh.write(FAKE_SAY)
+        os.chmod(self.bin, 0o755)
+        self.said = os.path.join(self.dir.name, "said.txt")
+        os.environ["SAY_LOG"] = self.said
+        self.mac = server.MacVoice(self.bin)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_lists_english_voices_only(self):
+        names = [v["name"] for v in self.mac.voices()]
+        self.assertEqual(names, ["Albert", "Eddy (English (UK))", "Fiona (Enhanced)"])
+
+    def test_speak_args_system_voice_and_named_voice(self):
+        self.mac.speak("Ball one.")
+        self.mac.speak("-5 degrees", voice="Albert", rate=1000)
+        with open(self.said) as fh:
+            lines = fh.read().splitlines()
+        self.assertEqual(lines[0], "Ball one.")
+        self.assertEqual(lines[1], "-v Albert -r 400  -5 degrees")
+
+    def test_stop_only_kills_the_line_it_targets(self):
+        t = threading.Thread(target=self.mac.speak, args=("slow line",), kwargs={"line_id": 7})
+        started = time.monotonic()
+        t.start()
+        time.sleep(0.3)
+        self.mac.stop(up_to=6)  # stale stop for an older line: ignored
+        time.sleep(0.3)
+        self.assertTrue(t.is_alive())
+        self.mac.stop(up_to=7)
+        t.join(3)
+        self.assertFalse(t.is_alive())
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_unavailable_without_say(self):
+        self.assertFalse(server.MacVoice("").available)
 
 
 class HttpTest(unittest.TestCase):
@@ -222,7 +282,8 @@ class HttpTest(unittest.TestCase):
                 req = urllib.request.Request(self.base + "/api/log", data=body, headers={"Content-Type": "application/json"}, method="POST")
                 with urllib.request.urlopen(req, timeout=15) as r:
                     self.assertEqual(r.status, 200)
-                rows = [json.loads(x) for x in open(server.Handler.log.path)]
+                with open(server.Handler.log.path) as fh:
+                    rows = [json.loads(x) for x in fh]
                 self.assertEqual([(r["src"], r["kind"]) for r in rows], [("browser", "event"), ("browser", "error")])
                 self.assertNotEqual(rows[0]["ts"], "spoofed")
                 self.assertIn("ERROR browser: boom", server.Handler.log.echo.getvalue())

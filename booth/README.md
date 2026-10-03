@@ -53,6 +53,20 @@ falls back to the built-in lines for that stretch of play.
 - Latency: each batch takes a few seconds. Keep the delay at 15s or more. The
   page warns you if Claude is slower than your delay.
 
+## Mac voices (including Siri)
+
+On a Mac, set **Voices from → This Mac**. The server speaks each line with
+the macOS `say` command, which is immune to background-tab throttling.
+
+- **System Voice** uses whatever is set in System Settings → Accessibility →
+  Spoken Content → System Voice. That can be a **Siri voice**, which browsers
+  can't use at all. Only one System Voice exists at a time.
+- **Auto** puts play-by-play on the System Voice and colour on the first
+  downloaded *Premium* or *Enhanced* English voice, if you have one (Manage
+  Voices in the same settings pane).
+- Speed and excitement work. Pitch doesn't, so Cookie Monster sounds like
+  whichever voice you pick.
+
 ## Syncing with your TV
 
 The data feed and your TV picture are almost never in step. Cable, streaming

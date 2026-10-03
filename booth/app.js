@@ -68,6 +68,7 @@
     timers: [], delay: store.get('delay', 20), finished: false,
     spoken: [], events: [], // recent history for flags
     lags: [], lastPollAt: 0,
+    macVoices: [], // from the server's `say -v ?`
   };
 
   // ---------------------------------------------------------------------------
@@ -222,6 +223,24 @@
     return best || voices[0] || null;
   }
 
+  const useMac = () => $('engine').value === 'mac';
+  const voiceKey = (speaker) => `${persona().id}.${speaker}${useMac() ? 'Mac' : ''}Voice`;
+
+  // Mac voice for a slot: '' means the System Voice (which may be a Siri voice).
+  function macVoiceFor(speaker) {
+    const sel = $(speaker === 'pbp' ? 'pbpVoice' : 'colourVoice').value;
+    if (sel !== 'auto') return sel;
+    if (speaker === 'pbp') return '';
+    // Colour: a different, good voice so the booth has two people in it.
+    const good = app.macVoices.find((v) => /premium|enhanced/i.test(v.name));
+    return good ? good.name : '';
+  }
+
+  function voiceName(speaker) {
+    if (useMac()) return macVoiceFor(speaker) || 'System Voice';
+    return (voiceFor(speaker) || {}).name;
+  }
+
   function voiceFor(speaker) {
     const sel = $(speaker === 'pbp' ? 'pbpVoice' : 'colourVoice').value;
     const all = speechSynthesis.getVoices();
@@ -232,22 +251,30 @@
   }
 
   function fillVoiceSelects() {
-    const voices = englishVoices();
+    const mac = useMac();
+    // [value, label] pairs for this engine.
+    const options = mac
+      ? [['auto', 'Auto'], ['', 'System Voice (Settings › Spoken Content)'], ...app.macVoices.map((v) => [v.name, `${v.name} (${v.lang})`])]
+      : [['', 'Auto'], ...englishVoices().map((v) => [v.voiceURI, `${v.name} (${v.lang})`])];
     for (const [id, speaker] of [['pbpVoice', 'pbp'], ['colourVoice', 'colour']]) {
       const sel = $(id);
-      const saved = store.get(`${persona().id}.${speaker}Voice`, '');
+      const saved = store.get(voiceKey(speaker), mac ? 'auto' : '');
       sel.innerHTML = '';
-      const auto = document.createElement('option');
-      auto.value = ''; auto.textContent = 'Auto';
-      sel.appendChild(auto);
-      for (const v of voices) {
+      for (const [value, label] of options) {
         const o = document.createElement('option');
-        o.value = v.voiceURI; o.textContent = `${v.name} (${v.lang})`;
+        o.value = value; o.textContent = label;
         sel.appendChild(o);
       }
-      sel.value = voices.some((v) => v.voiceURI === saved) ? saved : '';
-      sel.onchange = () => store.set(`${persona().id}.${speaker}Voice`, sel.value);
+      sel.value = options.some(([v]) => v === saved) ? saved : options[0][0];
+      sel.onchange = () => store.set(voiceKey(speaker), sel.value);
     }
+  }
+
+  async function loadMacVoices() {
+    try {
+      const r = await getJSON('/api/voices');
+      app.macVoices = r.voices || [];
+    } catch { app.macVoices = []; }
   }
 
   async function initStatus() {
@@ -259,12 +286,17 @@
       if (s.llm) opt.textContent = `Claude (${s.model})`;
       $('llmStatus').textContent = s.llm ? '' : `Claude unavailable: ${s.llmError}. Using built-in lines.`;
       $('logFile').textContent = s.logFile ? `Logging to ${s.logFile}` : 'Logging is off.';
+      $('engine').querySelector('option[value=mac]').disabled = !s.macVoices;
+      if (s.macVoices) await loadMacVoices();
+      $('engine').value = s.macVoices && store.get('engine', 'browser') === 'mac' ? 'mac' : 'browser';
+      fillVoiceSelects();
     } catch (e) {
       $('llmStatus').textContent = 'Server not reachable. Start it with: python3 server.py';
     }
     const want = store.get('source', 'templates');
     $('source').value = want === 'claude' && app.llm ? 'claude' : 'templates';
     $('source').addEventListener('change', () => store.set('source', $('source').value));
+    $('engine').addEventListener('change', () => { store.set('engine', $('engine').value); stopSpeech(); fillVoiceSelects(); });
   }
 
   // ---------------------------------------------------------------------------
@@ -378,8 +410,35 @@
     for (const l of lines) app.queue.push({ ...l, arrivedAt, seq: ++app.seq });
   }
 
+  // Stop whatever is being said. For Mac voices, only the line we're cutting
+  // off is stopped (a stale stop request mustn't kill the next line).
+  function stopSpeech() {
+    speechSynthesis.cancel();
+    if (useMac() && app.speaking) {
+      fetch('/api/say/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upTo: app.speaking.tok }) }).catch(() => {});
+    }
+  }
+
+  function speakMac(line, spec) {
+    const tok = ++app.seq;
+    app.speaking = { tok, line, startedAt: Date.now() };
+    const rate = Math.round(185 * spec.rate * (1 + 0.08 * line.excitement));
+    postJSON('/api/say', { text: line.text, voice: macVoiceFor(line.speaker), rate, id: tok })
+      .catch((e) => log('warn', { message: `Mac voice failed: ${e.message}` }))
+      .finally(() => { if (app.speaking && app.speaking.tok === tok) app.speaking = null; });
+  }
+
   function speak(line, lateMs) {
     const spec = persona().voices[line.speaker];
+    if (useMac()) {
+      speakMac(line, spec);
+      app.lastLineAt = Date.now();
+      logLine(line);
+      app.spoken.push(line.text);
+      if (app.spoken.length > 20) app.spoken.shift();
+      log('line', { speaker: line.speaker, text: line.text, eventId: line.eventId, excitement: line.excitement, lateMs: Math.round(lateMs || 0), engine: 'mac' });
+      return;
+    }
     const u = new SpeechSynthesisUtterance(line.text);
     const v = voiceFor(line.speaker);
     if (v) { u.voice = v; u.lang = v.lang; } else u.lang = spec.langs[0];
@@ -411,8 +470,8 @@
 
     const urgent = due.find((l) => l.excitement === 2 && l.speaker === 'pbp');
     if (app.speaking) {
-      if (now - app.speaking.startedAt > 20000) { speechSynthesis.cancel(); app.speaking = null; }
-      else if (urgent && app.speaking.line.priority < 8) { speechSynthesis.cancel(); app.speaking = null; }
+      if (now - app.speaking.startedAt > 20000) { stopSpeech(); app.speaking = null; }
+      else if (urgent && app.speaking.line.priority < 8) { stopSpeech(); app.speaking = null; }
       else return;
     }
     // A goal jumps the queue; routine chatter before it is dropped.
@@ -601,7 +660,7 @@
     app.running = true;
     $('startBtn').disabled = true; $('stopBtn').disabled = false;
     $('log').innerHTML = '';
-    speechSynthesis.cancel();
+    stopSpeech();
     app.speaking = null;
     app.timers.push(ticker.every(200, tick));
     app.timers.push(ticker.every(BATCH_MS, flushClaude));
@@ -609,7 +668,7 @@
     log('start', {
       sport: app.sport, game: sel.label, gameId: sel.id, status: sel.status || 'demo', persona: $('persona').value,
       source: $('source').value, delay: app.delay, speed: $('speed').value,
-      voices: { pbp: (voiceFor('pbp') || {}).name, colour: (voiceFor('colour') || {}).name }, userAgent: navigator.userAgent,
+      engine: $('engine').value, voices: { pbp: voiceName('pbp'), colour: voiceName('colour') }, userAgent: navigator.userAgent,
     });
     try {
       if (sel.demo || sel.status === 'final') await startReplay();
@@ -641,7 +700,7 @@
     app.timers.forEach((t) => ticker.cancel(t));
     app.timers = [];
     app.queue = []; app.pending = [];
-    speechSynthesis.cancel();
+    stopSpeech();
     app.speaking = null;
     $('startBtn').disabled = !app.selected; $('stopBtn').disabled = true;
     if (!keepStatus) setStatus('Stopped.');
