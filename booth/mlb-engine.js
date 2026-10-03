@@ -194,7 +194,11 @@
         const lastDesc = lastPitch ? ((lastPitch.details && lastPitch.details.call && lastPitch.details.call.description) || '') : '';
         evs.push({
           ...common, id: `${ab}-result`, type: 'result', sortOrder: ab * 1000 + 999,
-          replayAt: at(a.endTime || play.playEndTime), wall: ts(a.endTime || play.playEndTime),
+          replayAt: at(a.endTime || play.playEndTime),
+          // MLB stamps a result when it's scored, several seconds after the
+          // ball is hit (live logs: results ~5-10s "fresher" than pitches).
+          // Time the call to the pitch that ended the at-bat instead.
+          wall: resultWall(lastPitch, inPlay, a.endTime || play.playEndTime),
           eventType: r.eventType, event: r.event || '', description: r.description || '',
           rbi: r.rbi || 0,
           score: r.awayScore != null && r.homeScore != null ? { away: r.awayScore, home: r.homeScore } : null,
@@ -213,6 +217,14 @@
     }
     for (const ev of evs) ev.priority = PRIORITY[ev.type] || 1;
     return evs.sort((x, y) => x.sortOrder - y.sortOrder);
+  }
+
+  function resultWall(lastPitch, inPlay, endTime) {
+    const pitched = lastPitch ? ts(lastPitch.startTime) : null;
+    if (pitched == null) return ts(endTime);
+    // Ball in play: give it a moment to land or be fielded. Otherwise
+    // (strikeout, walk) the result is the pitch itself.
+    return pitched + (inPlay && inPlay === lastPitch ? 2500 : 500);
   }
 
   function inProgress(evs) {

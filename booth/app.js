@@ -11,7 +11,7 @@
   const LOG_MAX = 300;
 
   // Shown on the page and in the log, to confirm a reload picked up new code.
-  const BUILD = 'stable-ids-1';
+  const BUILD = 'result-timing-2';
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem('booth.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },

@@ -186,3 +186,17 @@ test('event ids survive MLB inserting an event earlier in an at-bat', () => {
   withIds.liveData.plays.allPlays[0].playEvents[0].playId = 'abc-123';
   assert.ok(B.normalizePlays(withIds, B.buildGame(withIds)).some((e) => e.id === '0-abc-123'));
 });
+
+test('results are timed to the pitch that ended the at-bat, not to when MLB scored it', () => {
+  const g = B.buildGame(feed);
+  const evs = B.normalizePlays(feed, g);
+  for (const r of evs.filter((e) => e.type === 'result')) {
+    const ab = r.id.split('-')[0];
+    const pitches = evs.filter((e) => e.type === 'pitch' && e.id.split('-')[0] === ab);
+    if (!pitches.length) continue;
+    const last = pitches[pitches.length - 1];
+    const gap = r.wall - last.wall;
+    assert.ok(gap === 500 || gap === 2500, `${r.id}: result ${gap}ms after last pitch`);
+    if (r.hit) assert.strictEqual(gap, 2500);
+  }
+});
