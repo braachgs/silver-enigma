@@ -200,3 +200,51 @@ test('results are timed to the pitch that ended the at-bat, not to when MLB scor
     if (r.hit) assert.strictEqual(gap, 2500);
   }
 });
+
+test('batting averages are spoken the way broadcasters say them', () => {
+  assert.strictEqual(B.avgWords('.290'), 'two-ninety');
+  assert.strictEqual(B.avgWords('.305'), 'three-oh-five');
+  assert.strictEqual(B.avgWords('.300'), 'three hundred');
+  assert.strictEqual(B.avgWords('.247'), 'two-forty-seven');
+  assert.strictEqual(B.avgWords('.000'), null);
+  assert.strictEqual(B.avgWords('1.000'), 'a thousand');
+  assert.strictEqual(B.avgWords('-.--'), null);
+});
+
+function withStats() {
+  const f = JSON.parse(JSON.stringify(feed));
+  const g = B.buildGame(f);
+  const ids = new Set();
+  for (const pl of f.liveData.plays.allPlays) { ids.add(pl.matchup.batter.id); ids.add(pl.matchup.pitcher.id); }
+  // Shape of statsapi /people/{id}/stats season splits and the feed's boxscore "stats".
+  for (const id of ids) {
+    B.setSeasonStats(g, id, 'hitting', { avg: '.287', homeRuns: 19, rbi: 71, atBats: 512 });
+    B.setSeasonStats(g, id, 'pitching', { era: '3.41', wins: 12, losses: 7, strikeOuts: 188, inningsPitched: '181.2' });
+    g.today.set(id, { batting: { atBats: 2, hits: 1 }, pitching: { numberOfPitches: 64, strikeOuts: 5 } });
+  }
+  return { f, g };
+}
+
+test('stats appear in intros and colour, read aloud properly', () => {
+  for (const id of Object.keys(B.PERSONAS)) {
+    const { f, g } = withStats();
+    const state = new B.GameState(g);
+    const rng = seeded(11);
+    const lines = [];
+    for (const ev of B.normalizePlays(f, g)) { state.apply(ev); lines.push(...B.templateLines(ev, B.PERSONAS[id], state, rng)); }
+    const statLines = lines.filter((l) => /two-eighty-seven|19 home runs|71 runs|3\.41|64 pitches|one for two|12 and 7|188/.test(l.text));
+    assert.ok(statLines.length >= 5, `${id}: only ${statLines.length} stat lines`);
+    for (const l of lines) assert.ok(!/[{}]|undefined|null|NaN|\.287/.test(l.text), `${id}: ${l.text}`);
+  }
+});
+
+test('no stats, no stat lines (and nothing breaks)', () => {
+  const g = B.buildGame(feed);
+  const v = B.statVars(g, 1, 2);
+  assert.ok(Object.values(v).every((x) => x == null));
+});
+
+test('rosterIds reads lineups and pitchers from the boxscore', () => {
+  const f = { liveData: { boxscore: { teams: { away: { batters: [1, 2], pitchers: [3] }, home: { batters: [4], pitchers: [5, 6] } } } } };
+  assert.deepStrictEqual(B.rosterIds(f).map((x) => `${x.id}:${x.group}`), ['1:hitting', '2:hitting', '3:pitching', '4:hitting', '5:pitching', '6:pitching']);
+});

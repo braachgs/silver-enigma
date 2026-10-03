@@ -11,7 +11,7 @@
   const LOG_MAX = 300;
 
   // Shown on the page and in the log, to confirm a reload picked up new code.
-  const BUILD = 'tv-marker-3';
+  const BUILD = 'stats-4';
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem('booth.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -579,6 +579,32 @@
   // Event processing
   // ---------------------------------------------------------------------------
 
+  // Regular-season stats for colour commentary (baseball): one small request
+  // per player, made once per game, three at a time, in the background.
+  function queueStats(feed) {
+    if (!eng().rosterIds || !app.game) return;
+    for (const { id, group } of eng().rosterIds(feed)) {
+      const key = `${id}:${group}`;
+      if (!app.statsWanted.has(key)) { app.statsWanted.add(key); app.statsQueue.push({ id, group }); }
+    }
+    pumpStats();
+  }
+
+  function pumpStats() {
+    while (app.statsBusy < 3 && app.statsQueue.length) {
+      const { id, group } = app.statsQueue.shift();
+      const game = app.game;
+      app.statsBusy++;
+      getJSON(`/api/mlb/v1/people/${id}/stats?stats=season&group=${group}&season=${game.season}&gameType=R`)
+        .then((d) => {
+          const stat = d.stats && d.stats[0] && d.stats[0].splits && d.stats[0].splits[0] && d.stats[0].splits[0].stat;
+          if (stat) { eng().setSeasonStats(game, id, group, stat); app.statsLoaded++; }
+        })
+        .catch((e) => { if (!app.statsFailed++) log('warn', { message: `player stats request failed: ${e.message}` }); })
+        .finally(() => { app.statsBusy--; pumpStats(); });
+    }
+  }
+
   function setupGame(pbp) {
     app.game = eng().buildGame(pbp);
     app.state = new (eng().GameState)(app.game);
@@ -587,6 +613,7 @@
     app.finished = false;
     app.lags = []; app.lastPollAt = 0; app.late = [];
     app.pitches = []; app.onTv = null;
+    app.statsWanted = new Set(); app.statsQueue = []; app.statsBusy = 0; app.statsLoaded = 0; app.statsFailed = 0;
   }
 
   function process(events, arrivedAt) {
@@ -672,6 +699,7 @@
     setStatus('Connecting to the NHL feed…');
     const pbp = await getJSON(sport().feedUrl(id));
     setupGame(pbp);
+    queueStats(pbp);
     const evs = eng().normalizePlays(pbp, app.game);
     if (eng().inProgress(evs)) {
       evs.forEach((e) => app.seen.add(e.id));
@@ -690,10 +718,11 @@
         const t0 = Date.now();
         const data = await getJSON(sport().feedUrl(id));
         eng().refreshGame(app.game, data);
+        queueStats(data);
         const now = Date.now();
         const added = eng().normalizePlays(data, app.game).filter((e) => !app.seen.has(e.id));
         if (added.length) process(added, now);
-        log('poll', { ms: now - t0, sinceLast: app.lastPollAt ? t0 - app.lastPollAt : null, added: added.length, hidden: document.hidden });
+        log('poll', { ms: now - t0, sinceLast: app.lastPollAt ? t0 - app.lastPollAt : null, added: added.length, hidden: document.hidden, statsLoaded: app.statsLoaded });
         app.lastPollAt = t0;
         if (sport().feedStatus(data) === 'final' && !app.finished) { app.finished = true; log('final', { situation: eng().situation(app.state) }); }
         const lag = feedLag();
@@ -720,6 +749,7 @@
     setStatus('Loading game…');
     const pbp = await getJSON(app.selected.demo ? sport().demoUrl : sport().feedUrl(app.selected.id));
     setupGame(pbp);
+    queueStats(pbp);
     const evs = eng().normalizePlays(pbp, app.game);
     const speed = Number($('speed').value) || 4;
     let i = 0, clock = -2, last = Date.now();

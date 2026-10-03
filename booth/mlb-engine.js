@@ -35,9 +35,12 @@
       id: feed.gamePk || (gd.game && gd.game.pk),
       status: (gd.status && gd.status.abstractGameState) || '',
       venue: (gd.venue && gd.venue.name) || '',
+      season: (gd.game && gd.game.season) || String(new Date().getFullYear()),
       away: parseTeam(teams.away),
       home: parseTeam(teams.home),
       players: gd.players || {},
+      today: readBox(feed), // id -> { batting, pitching } for this game
+      seasonStats: new Map(), // id -> { hitting, pitching } regular season, filled by the app
     };
   }
 
@@ -45,6 +48,87 @@
     const fresh = buildGame(feed);
     game.players = fresh.players;
     game.status = fresh.status;
+    game.today = fresh.today;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stats. The live feed's boxscore has today's line per player (its
+  // "seasonStats" are postseason-only in October, so regular-season numbers
+  // come from a separate request the app makes per player).
+  // ---------------------------------------------------------------------------
+
+  function readBox(feed) {
+    const out = new Map();
+    const teams = (feed.liveData && feed.liveData.boxscore && feed.liveData.boxscore.teams) || {};
+    for (const side of ['away', 'home']) {
+      const players = (teams[side] && teams[side].players) || {};
+      for (const p of Object.values(players)) {
+        if (p && p.person && p.stats) out.set(p.person.id, p.stats);
+      }
+    }
+    return out;
+  }
+
+  // Who to look up: everyone who has batted or pitched, or is in the lineup.
+  function rosterIds(feed) {
+    const ids = [];
+    const teams = (feed.liveData && feed.liveData.boxscore && feed.liveData.boxscore.teams) || {};
+    for (const side of ['away', 'home']) {
+      const t = teams[side] || {};
+      for (const id of t.batters || []) ids.push({ id, group: 'hitting' });
+      for (const id of t.pitchers || []) ids.push({ id, group: 'pitching' });
+    }
+    return ids;
+  }
+
+  function setSeasonStats(game, id, group, stat) {
+    const cur = game.seasonStats.get(id) || {};
+    cur[group] = stat || {};
+    game.seasonStats.set(id, cur);
+  }
+
+  const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven',
+    'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  function words(n) {
+    if (n < 20) return ONES[n];
+    return TENS[Math.floor(n / 10)] + (n % 10 ? '-' + ONES[n % 10] : '');
+  }
+
+  // ".290" -> "two-ninety", ".305" -> "three-oh-five", ".300" -> "three hundred".
+  function avgWords(avg) {
+    const m = /^(\d?)\.(\d{3})$/.exec(String(avg || ''));
+    if (!m) return null;
+    if (m[1] === '1') return 'a thousand';
+    const n = Number(m[2]);
+    if (!n) return null;
+    const h = Math.floor(n / 100), rest = n % 100;
+    if (!h) return words(rest);
+    if (!rest) return `${ONES[h]} hundred`;
+    return `${ONES[h]}-${rest < 10 ? 'oh-' + ONES[rest] : words(rest)}`;
+  }
+
+  const plural = (n, one, many) => (n == null ? null : `${n} ${n === 1 ? one : many}`);
+
+  function statVars(game, batterId, pitcherId) {
+    const b = (game.seasonStats.get(batterId) || {}).hitting || {};
+    const p = (game.seasonStats.get(pitcherId) || {}).pitching || {};
+    const bt = (game.today.get(batterId) || {}).batting || {};
+    const pt = (game.today.get(pitcherId) || {}).pitching || {};
+    const num = (v) => (v == null || v === '' ? null : Number(v));
+    const ab = num(bt.atBats), hits = num(bt.hits);
+    const pitches = num(pt.numberOfPitches);
+    return {
+      avg: b.atBats > 30 ? avgWords(b.avg) : null,
+      hrText: b.atBats > 30 ? plural(num(b.homeRuns), 'home run', 'home runs') : null,
+      rbi: b.atBats > 30 ? num(b.rbi) : null,
+      era: p.inningsPitched && Number(p.inningsPitched) >= 10 && /^\d+\.\d\d$/.test(p.era || '') ? p.era : null,
+      record: p.wins != null && p.losses != null && Number(p.inningsPitched) >= 10 ? `${p.wins} and ${p.losses}` : null,
+      seasonK: Number(p.inningsPitched) >= 10 ? num(p.strikeOuts) : null,
+      todayLine: ab ? `${words(hits || 0)} for ${words(ab)}` : null,
+      todayPitches: pitches || null,
+      todayKText: pitches ? plural(num(pt.strikeOuts) || 0, 'strikeout', 'strikeouts') : null,
+    };
   }
 
   function surname(game, person) {
@@ -134,6 +218,7 @@
       const common = {
         inning: a.inning || 1, top, team: batting.abbrev, teamName: batting.name, oppName: fielding.name,
         batter: surname(game, m.batter), batterFull: (m.batter && m.batter.fullName) || '',
+        batterId: m.batter && m.batter.id, pitcherId: m.pitcher && m.pitcher.id,
         pitcher: surname(game, m.pitcher), pitcherFull: (m.pitcher && m.pitcher.fullName) || '',
         batSide: m.batSide && m.batSide.code, pitchHand: m.pitchHand && m.pitchHand.code,
       };
@@ -276,6 +361,7 @@
         case 'atbat':
           this.balls = 0; this.strikes = 0;
           this.batter = ev.batter; this.pitcher = ev.pitcher;
+          this.batterId = ev.batterId; this.pitcherId = ev.pitcherId;
           break;
         case 'pitch':
           if (ev.count) { this.balls = ev.count.balls; this.strikes = ev.count.strikes; }
@@ -490,7 +576,7 @@
     if (ev.type === 'result' && ev.outsAfter === 3) return rng() < 0.45;
     if (since < 7) return false;
     if (key === 'atbat' && (state.history.get(ev.batter) || []).length) return rng() < 0.4;
-    if (key === 'ball' || key === 'foul') return rng() < 0.2;
+    if (key === 'ball' || key === 'foul') return rng() < 0.3;
     return false;
   }
 
@@ -531,6 +617,7 @@
       description: String(ev.description || ev.event || '').replace(/\s*\(\d+\)/g, ''), prior: last || null,
       pitchCount: state.pitches.get(ev.pitcher || state.pitcher) || null,
       away: g.away.name, home: g.home.name, venue: g.venue || 'the ballpark',
+      ...statVars(g, ev.batterId || state.batterId, ev.pitcherId || state.pitcherId),
     };
     // Templates that need a missing value are not usable.
     const needs = (template.match(/\{(\w+)\}/g) || []).map((m) => m.slice(1, -1));
@@ -582,11 +669,13 @@
       }
     }
     if (key && wantsColour(key, ev, state, rng)) {
-      let list = persona.colour[key] || persona.colour.general;
-      if (key === 'atbat') list = persona.colour.recap;
-      else if (ev.type === 'result' && ev.outsAfter === 3 && !(ev.scorers && ev.scorers.length)) list = persona.colour['half-end'];
-      else if (ev.type === 'result' && ev.scorers && ev.scorers.length && key !== 'home_run') list = persona.colour.scoring;
-      if (push('colour', list)) state.lastColourAt = state.eventIndex;
+      let lists = [persona.colour[key] || persona.colour.general];
+      // Between pitches and as a batter steps in, prefer a stat when one is known.
+      if (key === 'atbat') lists = [persona.colour.stats, persona.colour.recap];
+      else if (key === 'ball' || key === 'foul') lists = [persona.colour.stats, persona.colour.general];
+      else if (ev.type === 'result' && ev.outsAfter === 3 && !(ev.scorers && ev.scorers.length)) lists = [persona.colour['half-end']];
+      else if (ev.type === 'result' && ev.scorers && ev.scorers.length && key !== 'home_run') lists = [persona.colour.scoring];
+      if (lists.some((l) => l && rng() < 0.85 && push('colour', l))) state.lastColourAt = state.eventIndex;
     }
     state.lastType = ev.type;
     return lines;
@@ -621,7 +710,7 @@
     pbp: {
       join: ['Hello baseball fans! Me Cookie Monster! Me join game already going. It {half}. {score}. Me brought cookies.'],
       half: ['It {half}! {team} come to bat! Me ready! Me have snacks!', 'Here we go, {half}! Om nom nom!'],
-      atbat: ['Now batting... {batter}! Me like {batter}. Him look hungry.', '{batter} step up to plate. Plate empty. Very sad. No cookies on plate.', 'Here come {batter}. {outs}, {bases}.'],
+      atbat: ['Now batting... {batter}! Him hitting {avg}! Me not know what that mean, but it sound delicious.', '{batter} step up. {hrText} this year! That a lot of cookies.', 'Now batting... {batter}! Me like {batter}. Him look hungry.', '{batter} step up to plate. Plate empty. Very sad. No cookies on plate.', 'Here come {batter}. {outs}, {bases}.'],
       ball: ['Ball. {pitcher} miss. Count {count}.', 'Ball! That pitch no good. Like raisin pretending to be chocolate chip.', 'Ball {height}. Me would have eaten it anyway.'],
       called: ['Strike! {batter} just watch it go by. Me NEVER let cookie go by!', 'Called strike! Count {count}.', 'Strike! {batter} no swing. Why no swing?!'],
       swinging: ['{batter} swing... and MISS! Me know feeling. Me miss mouth sometimes.', 'Swing and miss! {speed} mile per hour! That faster than me running to cookie jar!', 'Whiff! Count {count}.'],
@@ -659,6 +748,13 @@
       'half-end': ['Baseball very long game. Very good for snacking. Best sport for snacking.', 'Me count every pitch. {pitcher} throw {pitchCount} pitches. Me eat {pitchCount} cookies. Coincidence? No.'],
       'pitching-change': ['New pitcher walk in from bullpen. Bullpen sound like place with lots of cows. Cows make milk. Milk go with cookies. Baseball very smart.'],
       recap: ['Last time {batter} {prior}. Me remember. Me have good memory for everything except where me put cookies.'],
+      stats: [
+        '{batter} {todayLine} today. Me {todayLine} on cookie jar today. Me mean me ate them all.',
+        '{pitcher} throw {todayPitches} pitches tonight. Arm must be tired. Arm need cookie.',
+        '{pitcher} have {todayKText} today! Every strikeout, me eat one cookie. Me in trouble.',
+        'Me read stat sheet. {pitcher} ERA {era}. Me not know what ERA is. Me think it a kind of cookie.',
+        '{batter} hit {hrText} this year and drive in {rbi} runs. Me drive in zero runs. Me drive to bakery.',
+      ],
       'game-end': ['Great game. Me give it ten cookies out of ten. Me already eat all ten.'],
       general: [
         'You know what baseball look like? Small white cookie with red stitches. Me tried once. Not good. Not good at all.',
@@ -688,7 +784,11 @@
     pbp: {
       join: ['Hello again everybody, and a very pleasant good evening to you. We join this one in the {half}. {score}.'],
       half: ['Here in the {half}, the {team} coming up to hit.', 'We go to the {half}.'],
-      atbat: ['{batter} steps in. {outs}, {bases}.', 'And here\'s {batter}. {outs}.', 'Now batting, {batter}. {pitcher} takes the sign.'],
+      atbat: [
+        '{batter} steps in, hitting {avg} with {hrText} and {rbi} runs batted in.',
+        'Here\'s {batter}, a {avg} hitter this year. {outs}, {bases}.',
+        '{batter} steps in. {outs}, {bases}.', 'And here\'s {batter}. {outs}.', 'Now batting, {batter}. {pitcher} takes the sign.',
+      ],
       ball: ['Ball, {height}. {count}.', 'Wide, ball. The count goes to {count}.', '{pitcher} misses, ball. {count}.', 'Ball. {count}.'],
       called: ['Strike, called. {count}.', 'Got him looking, strike. {count}.', '{speed} mile-an-hour {pitchType}, called a strike.'],
       swinging: ['Swung on and missed. {count}.', 'He swings, and misses the {pitchType}. {count}.', 'Swing and a miss, {speed} on the gun.'],
@@ -726,6 +826,14 @@
       'half-end': ['A nice tidy inning. You\'ll take that every time.', '{pitcher} is up to {pitchCount} pitches. Something to keep an eye on.'],
       'pitching-change': ['Fresh arm. The skipper didn\'t like what he was seeing, and I can\'t say I blame him.'],
       recap: ['{batter} {prior} his last time up.', 'Remember, {batter} {prior} earlier in this one.'],
+      stats: [
+        '{batter} is {todayLine} so far today.',
+        '{pitcher} is up to {todayPitches} pitches, with {todayKText} tonight.',
+        '{pitcher} came into this one with an earned run average of {era}.',
+        '{pitcher} went {record} during the season, with {seasonK} strikeouts.',
+        '{batter} hit {hrText} this year. You don\'t want to make a mistake over the plate to him.',
+        'He drove in {rbi} runs this season, {batter}. He\'s the kind of hitter you want up with men on.',
+      ],
       'game-end': ['A good, crisp ballgame. That\'s baseball the way it ought to be played.'],
       general: [
         'You know, I caught for eleven years, and the thing about a count like this is the pitcher\'s got to come to him.',
@@ -760,7 +868,10 @@
     pbp: {
       join: ['Good evening from across the pond, where we join this... baseball... in the {half}. {score}.'],
       half: ['Right, the {half}, and the {team} are having a go now.', 'Here we go, the {half}.'],
-      atbat: ['{batter} steps up to the wicket, sorry, the plate.', 'Next man in is {batter}. {outs}, {bases}.'],
+      atbat: [
+        '{batter} steps up. Batting average of {avg}, which I\'m told is very good.',
+        '{batter} steps up to the wicket, sorry, the plate.', 'Next man in is {batter}. {outs}, {bases}.',
+      ],
       ball: ['Wide. That\'s a ball, apparently. {count}.', 'Ball. {count}, as they say.', 'Oh, that was well off target. Ball.'],
       called: ['Strike! He didnae even move his bat!', 'That\'s a strike, the umpire says. {count}.'],
       swinging: ['Swing and a miss! Fresh air!', '{batter} swings at that and gets nothing but the Glasgow breeze.', 'Missed it! {speed} miles an hour, mind.'],
@@ -798,6 +909,12 @@
       'half-end': ['I\'ve been here two hours and we\'re only in the {half}. Two hours! At Hampden that\'s the whole match and the bus home.', 'Grand bit of defending that inning.'],
       'pitching-change': ['Fresh legs. Well, fresh arm. Same thing.'],
       recap: ['{batter} {prior} last time. I\'m keeping notes now, look at me.'],
+      stats: [
+        '{batter} has {hrText} this season. That\'s a proper goalscorer\'s record, that.',
+        '{pitcher} is on {todayPitches} pitches. In football we\'d have subbed him at sixty.',
+        '{batter} is {todayLine} today. Could be better, could be worse. Could be Partick Thistle.',
+        '{pitcher} has an ERA of {era}. I\'ve no idea what that is but everyone here seems impressed.',
+      ],
       'game-end': ['Proper performance. I\'m a convert. Well, almost.'],
       general: [
         'See, the thing is, in cricket they\'d have stopped for tea by now.',
@@ -812,6 +929,7 @@
   const BallBooth = {
     sport: 'mlb', buildGame, refreshGame, normalizePlays, inProgress, describe, situation, boardText,
     GameState, templateLines, joinLine, scoreLine, finalLine, lineKey, PERSONAS, countText, basesText,
+    rosterIds, setSeasonStats, avgWords, statVars,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = BallBooth;
