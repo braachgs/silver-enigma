@@ -10,6 +10,9 @@
   const STALE_MS = 15000;    // drop routine lines this late
   const LOG_MAX = 300;
 
+  // Shown on the page and in the log, to confirm a reload picked up new code.
+  const BUILD = 'stable-ids-1';
+
   const store = {
     get(k, d) { try { const v = localStorage.getItem('booth.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem('booth.' + k, JSON.stringify(v)); } catch { /* private mode */ } },
@@ -298,7 +301,7 @@
       opt.disabled = !s.llm;
       if (s.llm) opt.textContent = `Claude (${s.model})`;
       $('llmStatus').textContent = s.llm ? '' : `Claude unavailable: ${s.llmError}. Using built-in lines.`;
-      $('logFile').textContent = s.logFile ? `Logging to ${s.logFile}` : 'Logging is off.';
+      $('logFile').textContent = `Build ${BUILD}. ` + (s.logFile ? `Logging to ${s.logFile}` : 'Logging is off.');
       $('engine').querySelector('option[value=mac]').disabled = !s.macVoices;
       if (s.macVoices) await loadMacVoices();
       $('engine').value = s.macVoices && store.get('engine', 'browser') === 'mac' ? 'mac' : 'browser';
@@ -691,7 +694,7 @@
     app.timers.push(ticker.every(BATCH_MS, flushClaude));
     const sel = app.selected;
     log('start', {
-      sport: app.sport, game: sel.label, gameId: sel.id, status: sel.status || 'demo', persona: $('persona').value,
+      build: BUILD, sport: app.sport, game: sel.label, gameId: sel.id, status: sel.status || 'demo', persona: $('persona').value,
       source: $('source').value, delay: app.delay, speed: $('speed').value,
       engine: $('engine').value, voices: { pbp: voiceName('pbp'), colour: voiceName('colour') }, userAgent: navigator.userAgent,
     });

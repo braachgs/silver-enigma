@@ -168,3 +168,21 @@ test('events carry wall-clock times for feed-lag measurement; board shows inning
   }
   assert.fail('no half-inning ended');
 });
+
+test('event ids survive MLB inserting an event earlier in an at-bat', () => {
+  const g = B.buildGame(feed);
+  const before = new Set(B.normalizePlays(feed, g).map((e) => e.id));
+  const edited = JSON.parse(JSON.stringify(feed));
+  const play = edited.liveData.plays.allPlays[12];
+  // MLB adds a mound visit at the start of the at-bat; every later index shifts.
+  play.playEvents.unshift({ index: 0, type: 'action', isPitch: false, startTime: play.about.startTime,
+    details: { event: 'Mound Visit', eventType: 'mound_visit', description: 'Mound visit.' } });
+  play.playEvents.forEach((e, i) => { e.index = i; });
+  const after = B.normalizePlays(edited, B.buildGame(edited)).map((e) => e.id);
+  const fresh = after.filter((id) => !before.has(id));
+  assert.strictEqual(fresh.length, 1, `unexpected new ids: ${fresh}`);
+  // And MLB's own playId wins when present.
+  const withIds = JSON.parse(JSON.stringify(feed));
+  withIds.liveData.plays.allPlays[0].playEvents[0].playId = 'abc-123';
+  assert.ok(B.normalizePlays(withIds, B.buildGame(withIds)).some((e) => e.id === '0-abc-123'));
+});

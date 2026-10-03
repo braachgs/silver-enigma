@@ -98,6 +98,18 @@
     }));
   }
 
+  // Stable id for a pitch or action. MLB sometimes inserts or edits events in
+  // an at-bat after the fact, which shifts positions; ids based on position
+  // made the booth replay old pitches as new. Prefer MLB's own playId, then
+  // the pitch number, then the event's time.
+  function eventId(ab, pe, i) {
+    if (pe.playId) return `${ab}-${pe.playId}`;
+    if (pe.isPitch && pe.pitchNumber != null) return `${ab}-p${pe.pitchNumber}`;
+    const d = pe.details || {};
+    if (pe.startTime) return `${ab}-a${pe.startTime}-${d.eventType || pe.type || ''}`;
+    return `${ab}-${pe.index != null ? pe.index : i}`;
+  }
+
   function normalizePlays(feed, game) {
     const plays = (feed.liveData && feed.liveData.plays && feed.liveData.plays.allPlays) || [];
     const evs = [];
@@ -154,7 +166,7 @@
           const code = (d.call && d.call.code) || d.code;
           const pd = pe.pitchData || {};
           evs.push({
-            ...base, id: `${ab}-${pe.index != null ? pe.index : i}`, type: 'pitch',
+            ...base, id: eventId(ab, pe, i), type: 'pitch',
             kind: pitchKind(desc, code), call: desc,
             pitchType: (d.type && d.type.description) || 'pitch',
             speed: pd.startSpeed ? Math.round(pd.startSpeed) : null,
@@ -165,7 +177,7 @@
         } else if (pe.type === 'action' || pe.type === 'pickoff' || d.eventType) {
           actionIdx.add(pe.index != null ? pe.index : i);
           evs.push({
-            ...base, id: `${ab}-${pe.index != null ? pe.index : i}`, type: 'action',
+            ...base, id: eventId(ab, pe, i), type: 'action',
             eventType: d.eventType || '', event: d.event || '', description: d.description || '',
             score: d.awayScore != null && d.homeScore != null ? { away: d.awayScore, home: d.homeScore } : null,
             outs: pe.count ? pe.count.outs : null,
