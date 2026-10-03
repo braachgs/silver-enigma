@@ -101,6 +101,40 @@ class CommentatorTest(unittest.TestCase):
             c.lines(PAYLOAD)
 
 
+class SessionLogTest(unittest.TestCase):
+    def test_writes_jsonl_echoes_problems_and_snapshots_feeds(self):
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            out = io.StringIO()
+            log = server.SessionLog(d, echo=out)
+            log.write("line", "browser", text="Ball one.")
+            log.write("warn", "relay", message="MLB 503 for /x")
+            log.write("flag", "browser", note="count wrong", situation="Top 3rd", recentLines=["Ball. One and one."])
+            rows = [json.loads(x) for x in open(log.path)]
+            self.assertEqual([r["kind"] for r in rows], ["line", "warn", "flag"])
+            self.assertEqual(rows[0]["text"], "Ball one.")
+            echoed = out.getvalue()
+            self.assertIn("WARN  relay: MLB 503 for /x", echoed)
+            self.assertIn('count wrong  |  Top 3rd  |  last line: "Ball. One and one."', echoed)
+            self.assertNotIn("Ball one.", echoed)  # routine lines go to the file only
+
+            log.snapshot_feed("/api/mlb/v1.1/game/777/feed/live", b'{"a":1}')
+            log.snapshot_feed("/api/mlb/v1.1/game/777/feed/live", b'{"a":2}')  # throttled
+            log.snapshot_feed("/api/nhl/gamecenter/2026020001/play-by-play", b'{"b":1}')
+            log.snapshot_feed("/api/mlb/v1/schedule", b'{}')  # not a game feed
+            self.assertEqual(gzip.decompress((Path(d) / "feed-mlb-777.json.gz").read_bytes()), b'{"a":1}')
+            self.assertTrue((Path(d) / "feed-nhl-2026020001.json.gz").exists())
+            self.assertEqual(len(list(Path(d).glob("feed-*"))), 2)
+
+    def test_unwritable_directory_does_not_raise(self):
+        import io
+        log = server.SessionLog("/proc/booth-cannot-write-here", echo=io.StringIO())
+        log.write("error", message="still fine")
+        log.snapshot_feed("/api/mlb/v1.1/game/1/feed/live", b"{}")
+        self.assertIsNone(log.path)
+
+
 class HttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -112,6 +146,7 @@ class HttpTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.httpd.shutdown()
+        cls.httpd.server_close()
 
     def get(self, path):
         try:
@@ -175,6 +210,26 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(json.loads(data), json.loads(body))
         self.assertEqual(seen["path"], "/api/v1/schedule?sportId=1&date=2026-10-03&hydrate=team")
         self.assertEqual(seen["enc"], "gzip")
+
+    def test_log_endpoint(self):
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            old = server.Handler.log
+            server.Handler.log = server.SessionLog(d, echo=io.StringIO())
+            try:
+                body = json.dumps({"entries": [{"kind": "event", "desc": "Ball", "ts": "spoofed"}, "junk", {"kind": "error", "message": "boom"}]}).encode()
+                req = urllib.request.Request(self.base + "/api/log", data=body, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    self.assertEqual(r.status, 200)
+                rows = [json.loads(x) for x in open(server.Handler.log.path)]
+                self.assertEqual([(r["src"], r["kind"]) for r in rows], [("browser", "event"), ("browser", "error")])
+                self.assertNotEqual(rows[0]["ts"], "spoofed")
+                self.assertIn("ERROR browser: boom", server.Handler.log.echo.getvalue())
+                status = json.loads(self.get("/api/status")[1])
+                self.assertTrue(status["logFile"].endswith(".jsonl"))
+            finally:
+                server.Handler.log = old
 
     def test_commentary(self):
         req = urllib.request.Request(self.base + "/api/commentary", data=json.dumps(PAYLOAD).encode(),

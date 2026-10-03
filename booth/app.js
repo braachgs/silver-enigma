@@ -66,6 +66,7 @@
     game: null, state: null, seen: new Set(), queue: [], speaking: null, seq: 0,
     pending: [], inFlight: false, recent: [], joining: false, lastLineAt: 0,
     timers: [], delay: store.get('delay', 20), finished: false,
+    spoken: [], events: [], // recent history for flags
   };
 
   // ---------------------------------------------------------------------------
@@ -89,6 +90,48 @@
   function setStatus(text, err) {
     $('status').textContent = text;
     $('status').classList.toggle('err', !!err);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session log: batched to the server, which writes logs/session-*.jsonl and
+  // prints warnings, errors and flags in its terminal as they happen.
+  // Logging must never break the booth, so everything here swallows errors.
+  // ---------------------------------------------------------------------------
+
+  const logBuf = [];
+  function log(kind, data) {
+    try {
+      logBuf.push({ kind, t: Date.now(), ...data });
+      if (logBuf.length > 500) logBuf.splice(0, logBuf.length - 500);
+      if (kind === 'error' || kind === 'warn' || kind === 'flag') flushLog();
+    } catch { /* ignore */ }
+  }
+
+  function flushLog() {
+    if (!logBuf.length) return;
+    try {
+      const body = JSON.stringify({ entries: logBuf.splice(0) });
+      fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: body.length < 60000 }).catch(() => {});
+    } catch { /* ignore */ }
+  }
+
+  setInterval(flushLog, 5000);
+  window.addEventListener('pagehide', flushLog);
+  window.addEventListener('error', (e) => log('error', { message: e.message, where: `${e.filename}:${e.lineno}` }));
+  window.addEventListener('unhandledrejection', (e) => log('error', { message: String((e.reason && e.reason.message) || e.reason) }));
+
+  function flag() {
+    const note = $('flagNote').value.trim();
+    log('flag', {
+      note,
+      situation: app.state ? eng().situation(app.state) : '',
+      recentLines: app.spoken.slice(-6),
+      recentEvents: app.events.slice(-6),
+      delay: app.delay, sport: app.sport, persona: $('persona').value, source: $('source').value,
+    });
+    $('flagNote').value = '';
+    $('flagBtn').textContent = 'Flagged ✓';
+    setTimeout(() => { $('flagBtn').textContent = 'Flag'; }, 1500);
   }
 
   const sport = () => SPORTS[app.sport];
@@ -177,6 +220,7 @@
       opt.disabled = !s.llm;
       if (s.llm) opt.textContent = `Claude (${s.model})`;
       $('llmStatus').textContent = s.llm ? '' : `Claude unavailable: ${s.llmError}. Using built-in lines.`;
+      $('logFile').textContent = s.logFile ? `Logging to ${s.logFile}` : 'Logging is off.';
     } catch (e) {
       $('llmStatus').textContent = 'Server not reachable. Start it with: python3 server.py';
     }
@@ -253,16 +297,19 @@
     while (log.children.length > LOG_MAX) log.removeChild(log.firstChild);
   }
 
-  function logEvent(ev, arrivedAt) {
+  function logEvent(ev, arrivedAt, desc) {
     const row = document.createElement('div');
     row.className = 'ev';
     const span = document.createElement('span');
-    span.textContent = eng().describe(ev, app.state);
+    span.textContent = desc;
     if (app.mode === 'live') {
       const b = document.createElement('button');
       b.textContent = 'sync';
       b.title = 'Click the moment this happens on your TV';
-      b.onclick = () => setDelay(Math.round((Date.now() - arrivedAt) / 1000));
+      b.onclick = () => {
+        setDelay(Math.round((Date.now() - arrivedAt) / 1000));
+        log('sync', { delay: app.delay, event: desc });
+      };
       row.appendChild(b);
     }
     row.appendChild(span);
@@ -293,7 +340,7 @@
     for (const l of lines) app.queue.push({ ...l, arrivedAt, seq: ++app.seq });
   }
 
-  function speak(line) {
+  function speak(line, lateMs) {
     const spec = persona().voices[line.speaker];
     const u = new SpeechSynthesisUtterance(line.text);
     const v = voiceFor(line.speaker);
@@ -307,13 +354,20 @@
     app.lastLineAt = Date.now();
     speechSynthesis.speak(u);
     logLine(line);
+    app.spoken.push(line.text);
+    if (app.spoken.length > 20) app.spoken.shift();
+    log('line', { speaker: line.speaker, text: line.text, eventId: line.eventId, excitement: line.excitement, lateMs: Math.round(lateMs || 0) });
   }
 
   function tick() {
     const now = Date.now();
     const delayMs = app.mode === 'live' ? app.delay * 1000 : 0;
     const dueAt = (l) => l.arrivedAt + delayMs;
-    app.queue = app.queue.filter((l) => !(l.priority < 5 && now - dueAt(l) > STALE_MS));
+    const stale = app.queue.filter((l) => l.priority < 5 && now - dueAt(l) > STALE_MS);
+    if (stale.length) {
+      app.queue = app.queue.filter((l) => !stale.includes(l));
+      log('drop', { reason: 'stale', lines: stale.map((l) => l.text) });
+    }
     let due = app.queue.filter((l) => dueAt(l) <= now).sort((a, b) => a.seq - b.seq);
     if (!due.length) return maybeFinish();
 
@@ -337,7 +391,7 @@
     }
     const next = due[0];
     app.queue = app.queue.filter((l) => l !== next);
-    speak(next);
+    speak(next, now - dueAt(next));
   }
 
   function maybeFinish() {
@@ -365,10 +419,14 @@
       app.seen.add(ev.id);
       app.state.apply(ev);
       const lines = eng().templateLines(ev, persona(), app.state);
-      logEvent(ev, arrivedAt);
+      const desc = eng().describe(ev, app.state);
+      logEvent(ev, arrivedAt, desc);
       updateBoard(ev);
+      app.events.push(desc);
+      if (app.events.length > 20) app.events.shift();
+      log('event', { id: ev.id, type: ev.type, desc, arrivedAt, situation: eng().situation(app.state) });
       if (claude) {
-        app.pending.push({ ev, arrivedAt, fallback: lines, desc: eng().describe(ev, app.state) });
+        app.pending.push({ ev, arrivedAt, fallback: lines, desc });
         if (ev.type === 'goal') flushClaude();
       } else {
         enqueue(lines, arrivedAt);
@@ -403,8 +461,10 @@
       app.recent.push(...lines.map((l) => `${l.speaker}: ${l.text}`));
       app.recent = app.recent.slice(-24);
       const late = app.mode === 'live' && r.seconds > app.delay;
+      if (late) log('warn', { message: `Claude took ${r.seconds}s, longer than the ${app.delay}s delay` });
       $('llmStatus').textContent = `Claude answered in ${r.seconds}s` + (late ? `, which is longer than your delay. Raise the delay above ${Math.ceil(r.seconds) + 2}s.` : '.');
     } catch (e) {
+      log('warn', { message: `Claude failed: ${e.message}` });
       $('llmStatus').textContent = `Claude failed (${e.message}). Using built-in lines for that stretch.`;
       if (app.running) for (const b of batch) enqueue(b.fallback, b.arrivedAt);
     } finally {
@@ -443,9 +503,10 @@
         const now = Date.now();
         const added = eng().normalizePlays(data, app.game).filter((e) => !app.seen.has(e.id));
         if (added.length) process(added, now);
-        if (sport().feedStatus(data) === 'final' && !app.finished) app.finished = true;
+        if (sport().feedStatus(data) === 'final' && !app.finished) { app.finished = true; log('final', { situation: eng().situation(app.state) }); }
         if (!app.finished) setStatus(`Live: ${app.game.away.name} at ${app.game.home.name}. Feed updated ${new Date().toLocaleTimeString()}.`);
       } catch (e) {
+        log('warn', { message: `feed poll failed: ${e.message}` });
         setStatus(`Feed hiccup (${e.message}); retrying…`, true);
       }
       if (app.running && !app.finished) app.timers.push(setTimeout(poll, POLL_MS));
@@ -496,11 +557,17 @@
     app.timers.push(setInterval(tick, 200));
     app.timers.push(setInterval(flushClaude, BATCH_MS));
     const sel = app.selected;
+    log('start', {
+      sport: app.sport, game: sel.label, gameId: sel.id, status: sel.status || 'demo', persona: $('persona').value,
+      source: $('source').value, delay: app.delay, speed: $('speed').value,
+      voices: { pbp: (voiceFor('pbp') || {}).name, colour: (voiceFor('colour') || {}).name }, userAgent: navigator.userAgent,
+    });
     try {
       if (sel.demo || sel.status === 'final') await startReplay();
       else if (sel.status === 'live') await startLive();
       else await waitForStart();
     } catch (e) {
+      log('error', { message: `couldn't start: ${e.message}` });
       setStatus(`Couldn't start: ${e.message}`, true);
       stop();
     }
@@ -520,6 +587,7 @@
   }
 
   function stop(keepStatus) {
+    if (app.running) log('stop', { situation: app.state ? eng().situation(app.state) : '' });
     app.running = false;
     app.timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
     app.timers = [];
@@ -547,7 +615,15 @@
     speechSynthesis.addEventListener('voiceschanged', fillVoiceSelects);
     initStatus();
     setDelay(app.delay);
-    document.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => setDelay(app.delay + Number(b.dataset.d))));
+    document.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => {
+      setDelay(app.delay + Number(b.dataset.d));
+      log('delay', { delay: app.delay });
+    }));
+    $('flagBtn').onclick = flag;
+    $('flagNote').addEventListener('keydown', (e) => { if (e.key === 'Enter') flag(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'f' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); $('flagNote').focus(); }
+    });
     $('date').value = todayLocal();
     $('loadGames').onclick = loadGames;
     $('date').onchange = loadGames;

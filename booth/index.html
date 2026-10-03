@@ -22,7 +22,7 @@
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
     label { display: block; font-size: .85rem; color: var(--dim); margin: .6rem 0 .3rem; }
-    select, input[type=date], input[type=number] { width: 100%; background: var(--surface2); color: var(--text);
+    select, input[type=date], input[type=number], input[type=text] { width: 100%; background: var(--surface2); color: var(--text);
       border: 1px solid var(--border); border-radius: 8px; padding: .5rem .6rem; font: inherit; }
     button { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
       padding: .5rem .9rem; font: inherit; cursor: pointer; }
@@ -128,8 +128,15 @@
   </section>
 
   <section class="card">
-    <h2>On air</h2>
+    <div class="row" style="justify-content:space-between;margin-bottom:.75rem">
+      <h2 style="margin:0">On air</h2>
+      <div class="row" style="flex:1;justify-content:flex-end;min-width:240px">
+        <input id="flagNote" type="text" placeholder="Something wrong? Note it (press F)" style="flex:1;min-width:140px;max-width:340px" />
+        <button id="flagBtn" title="Logs the last few lines and the game situation for debugging">Flag</button>
+      </div>
+    </div>
     <div class="log" id="log"></div>
+    <p class="hint" id="logFile"></p>
   </section>
 </main>
 <script src="engine.js"></script>

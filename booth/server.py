@@ -7,6 +7,11 @@ APIs directly because of CORS), and optionally writes commentary with Claude.
     python3 server.py                 # http://localhost:8765
     ANTHROPIC_API_KEY=... python3 server.py   # enables "Claude" commentary
 
+Each run writes a session log to logs/ (what the feed sent, what the booth
+said, sync clicks, flags, errors) and keeps a copy of the live game feed, so a
+game can be replayed and debugged afterwards. Warnings, errors and flags are
+also printed here as they happen.
+
 Standard library only, except the optional `anthropic` package.
 """
 import argparse
@@ -38,6 +43,78 @@ NHL_PATH = re.compile(r"^[A-Za-z0-9/_\-]{1,200}$")
 MLB_PATH = re.compile(r"^v1(\.1)?/[A-Za-z0-9/_\-]{1,200}$")
 MLB_QUERY = re.compile(r"^[A-Za-z0-9=&,_\-.]{0,300}$")
 MODEL = os.environ.get("BOOTH_MODEL", "claude-opus-5-5")
+LIVE_FEED = re.compile(r"(?:gamecenter/(\d+)/play-by-play|game/(\d+)/feed/live)$")
+FEED_SNAPSHOT_SECONDS = 60
+ECHO_KINDS = {"error", "warn", "flag"}
+
+
+# ---------------------------------------------------------------------------
+# Session log
+# ---------------------------------------------------------------------------
+
+
+class SessionLog:
+    """Append-only JSONL log of one server run, plus throttled feed snapshots.
+
+    Never raises: logging must not take the booth down mid-game.
+    """
+
+    def __init__(self, directory=None, echo=None):
+        self.lock = threading.Lock()
+        self.dir = Path(directory) if directory else None
+        self.path = None
+        self.echo = echo
+        self._snapped = {}
+        if self.dir:
+            try:
+                self.dir.mkdir(parents=True, exist_ok=True)
+                self.path = self.dir / f"session-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+            except OSError as e:
+                self._say(f"[log] can't write to {self.dir}: {e}")
+                self.dir = None
+
+    def _say(self, text):
+        if self.echo:
+            print(text, file=self.echo, flush=True)
+
+    def write(self, kind, src="server", **data):
+        entry = {"ts": round(time.time(), 3), "src": src, "kind": kind, **data}
+        if self.path:
+            try:
+                with self.lock, open(self.path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+            except OSError:
+                pass
+        if kind in ECHO_KINDS:
+            self._say(f"[{time.strftime('%H:%M:%S')}] {kind.upper():5} {src}: {self.summary(kind, data)}")
+
+    @staticmethod
+    def summary(kind, data):
+        if kind == "flag":
+            note = data.get("note") or "(no note)"
+            said = (data.get("recentLines") or [""])[-1]
+            return f'{note}  |  {data.get("situation", "")}  |  last line: "{said}"'
+        text = data.get("message") or json.dumps(data, ensure_ascii=False, default=str)
+        return str(text)[:300]
+
+    def snapshot_feed(self, path, body):
+        """Keep the latest copy of a live game feed (at most once a minute)."""
+        m = LIVE_FEED.search(path)
+        if not (self.dir and m):
+            return
+        league, gid = ("nhl", m.group(1)) if m.group(1) else ("mlb", m.group(2))
+        now = time.monotonic()
+        with self.lock:
+            if now - self._snapped.get(gid, -1e9) < FEED_SNAPSHOT_SECONDS:
+                return
+            self._snapped[gid] = now
+        target = self.dir / f"feed-{league}-{gid}.json.gz"
+        try:
+            tmp = target.with_suffix(".tmp")
+            tmp.write_bytes(gzip.compress(body))
+            os.replace(tmp, target)
+        except OSError as e:
+            self.write("warn", message=f"couldn't save feed snapshot: {e}")
 
 # ---------------------------------------------------------------------------
 # League relays, with a tiny cache so several tabs don't hammer the APIs
@@ -239,6 +316,7 @@ class Commentator:
 
 class Handler(BaseHTTPRequestHandler):
     commentator = None
+    log = SessionLog()  # replaced in main(); a no-op log for tests
     server_version = "BroadcastBooth/1.0"
 
     def log_message(self, fmt, *args):
@@ -263,42 +341,76 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, (ROOT / name).read_bytes(), ctype)
         elif path == "/api/status":
             c = self.commentator
-            self.send_json(200, {"llm": c.available, "model": MODEL if c.available else None, "llmError": c.error})
+            self.send_json(200, {"llm": c.available, "model": MODEL if c.available else None, "llmError": c.error,
+                                 "logFile": str(self.log.path) if self.log.path else None})
         elif path.startswith("/api/nhl/"):
             if query:
                 return self.send(*bad_request())
-            self.send(*fetch_nhl(path[len("/api/nhl/"):]))
+            self.relay("NHL", path, *fetch_nhl(path[len("/api/nhl/"):]))
         elif path.startswith("/api/mlb/"):
-            self.send(*fetch_mlb(path[len("/api/mlb/"):], query))
+            self.relay("MLB", path, *fetch_mlb(path[len("/api/mlb/"):], query))
         else:
             self.send_json(404, {"error": "not found"})
 
+    def relay(self, league, path, status, body):
+        if status == 200:
+            self.log.snapshot_feed(path, body)
+        else:
+            self.log.write("warn", "relay", message=f"{league} {status} for {path}: {body[:200].decode('utf-8', 'replace')}")
+        self.send(status, body)
+
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > 200_000:
+            raise ValueError("payload too large")
+        return json.loads(self.rfile.read(length) or b"{}")
+
     def do_POST(self):
+        if self.path == "/api/log":
+            return self.post_log()
         if self.path != "/api/commentary":
             return self.send_json(404, {"error": "not found"})
         if not self.commentator.available:
             return self.send_json(503, {"error": self.commentator.error})
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > 200_000:
-                return self.send_json(413, {"error": "payload too large"})
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = self.read_json()
             started = time.monotonic()
             lines = self.commentator.lines(payload)
-            self.send_json(200, {"lines": lines, "seconds": round(time.monotonic() - started, 2)})
+            seconds = round(time.monotonic() - started, 2)
+            self.log.write("claude", "server", seconds=seconds, events=len(payload.get("events") or []), lines=lines)
+            self.send_json(200, {"lines": lines, "seconds": seconds})
         except Exception as e:  # report to the page; it falls back to templates
+            self.log.write("warn", "claude", message=f"{type(e).__name__}: {e}")
             self.send_json(502, {"error": f"{type(e).__name__}: {e}"})
+
+    def post_log(self):
+        try:
+            entries = self.read_json().get("entries") or []
+        except (ValueError, json.JSONDecodeError) as e:
+            return self.send_json(400, {"error": str(e)})
+        for e in entries[:1000]:
+            if isinstance(e, dict):
+                data = {k: v for k, v in e.items() if k not in ("kind", "src", "ts")}
+                self.log.write(str(e.get("kind", "info"))[:20], "browser", **data)
+        self.send_json(200, {"ok": True})
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8765)))
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--log-dir", default=os.environ.get("BOOTH_LOG_DIR", str(ROOT / "logs")),
+                    help="where session logs and feed snapshots go (default: booth/logs)")
+    ap.add_argument("--no-log", action="store_true", help="don't write logs")
     args = ap.parse_args(argv)
     Handler.commentator = Commentator()
+    Handler.log = SessionLog(None if args.no_log else args.log_dir, echo=sys.stderr)
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     llm = f"Claude commentary ON ({MODEL})" if Handler.commentator.available else f"Claude commentary off: {Handler.commentator.error}"
     print(f"Broadcast Booth on http://localhost:{args.port}  |  {llm}", file=sys.stderr)
+    if Handler.log.path:
+        print(f"Logging to {Handler.log.path}  (warnings, errors and flags also appear below)", file=sys.stderr)
+    Handler.log.write("server-start", model=MODEL if Handler.commentator.available else None)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

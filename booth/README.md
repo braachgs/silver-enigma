@@ -66,6 +66,22 @@ and the feed itself each add different lag. The booth holds commentary for
 - If the commentary runs **behind** your TV even at 0s, the feed is slower than
   your picture. Pause your TV/stream for a few seconds to fall back behind it.
 
+## Logs and flags
+
+Every run writes a session log to `booth/logs/session-<date>-<time>.jsonl` and
+keeps the latest copy of each live game feed (`feed-mlb-<id>.json.gz`, saved
+at most once a minute). Together they let a game be replayed and debugged
+after the fact.
+
+- **The server's terminal shows problems as they happen:** feed failures,
+  Claude failures or slowness, browser errors, and your flags.
+- **Flag button (or press F):** type a short note ("count is one pitch behind")
+  and press Enter. The log records your note with the game situation, the last
+  few spoken lines and the last few feed events.
+- The log also records every event, every spoken line (and how late it was
+  against the sync target), sync clicks and delay changes.
+- Run with `--no-log` to turn logging off, or `--log-dir PATH` to put it elsewhere.
+
 ## How it works
 
 ```
