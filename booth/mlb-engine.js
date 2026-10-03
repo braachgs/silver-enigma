@@ -108,7 +108,7 @@
     return `${ONES[h]}-${rest < 10 ? 'oh-' + ONES[rest] : words(rest)}`;
   }
 
-  const plural = (n, one, many) => (n == null ? null : `${n} ${n === 1 ? one : many}`);
+  const plural = (n, one, many) => (n == null ? null : n === 0 ? `no ${many}` : `${n} ${n === 1 ? one : many}`);
 
   function statVars(game, batterId, pitcherId) {
     const b = (game.seasonStats.get(batterId) || {}).hitting || {};
@@ -228,7 +228,7 @@
 
       const halfKey = `${common.inning}-${top}`;
       if (halfKey !== prevHalf) {
-        evs.push({ ...common, id: `${ab}-half`, type: 'half', sortOrder: ab * 1000, replayAt: at(a.startTime) });
+        evs.push({ ...common, id: `${ab}-half`, type: 'half', sortOrder: ab * 1000, replayAt: at(a.startTime), wall: ts(a.startTime) });
         prevHalf = halfKey;
       }
 
@@ -301,7 +301,16 @@
       evs.push({ id: 'final', type: 'game-end', sortOrder: 1e12, replayAt: lastT + 5, inning: 9, top: false });
     }
     for (const ev of evs) ev.priority = PRIORITY[ev.type] || 1;
-    return evs.sort((x, y) => x.sortOrder - y.sortOrder);
+    evs.sort((x, y) => x.sortOrder - y.sortOrder);
+    // Calls are timed to wall-clock; never let a later event be due before an
+    // earlier one (e.g. an inning header stamped after its first batter).
+    let prev = null;
+    for (const ev of evs) {
+      if (ev.wall == null) continue;
+      if (prev != null && ev.wall < prev) ev.wall = prev;
+      prev = ev.wall;
+    }
+    return evs;
   }
 
   function resultWall(lastPitch, inPlay, endTime) {
@@ -614,8 +623,10 @@
       scorers: ev.scorers && ev.scorers.length ? ev.scorers.join(' and ') : null,
       scores: ev.scorers && ev.scorers.length ? `${ev.scorers.join(' and ')} ${ev.scorers.length > 1 ? 'score' : 'scores'}` : null,
       // Season tallies like "homers (21)" read badly aloud.
-      description: String(ev.description || ev.event || '').replace(/\s*\(\d+\)/g, ''), prior: last || null,
+      description: String(ev.description || ev.event || '').replace(/\s*\(\d+\)/g, '').replace(/^Pitching Change:\s*/i, ''), prior: last || null,
       pitchCount: state.pitches.get(ev.pitcher || state.pitcher) || null,
+      // Only worth remarking on once a pitcher is getting deep.
+      bigPitchCount: (state.pitches.get(ev.pitcher || state.pitcher) || 0) >= 80 ? state.pitches.get(ev.pitcher || state.pitcher) : null,
       away: g.away.name, home: g.home.name, venue: g.venue || 'the ballpark',
       ...statVars(g, ev.batterId || state.batterId, ev.pitcherId || state.pitcherId),
     };
@@ -823,7 +834,7 @@
     colour: {
       home_run: ['He was sitting on that one. Pitcher left it right out over the plate and he didn\'t miss it.', 'You hang one up there to a hitter like that, that\'s what happens.'],
       scoring: ['You get men on base, you\'ve got to drive \'em in. And they did.', 'That\'s the kind of at-bat that wins you ballgames.'],
-      'half-end': ['A nice tidy inning. You\'ll take that every time.', '{pitcher} is up to {pitchCount} pitches. Something to keep an eye on.'],
+      'half-end': ['A nice tidy inning. You\'ll take that every time.', '{pitcher} is up to {bigPitchCount} pitches. Something to keep an eye on.'],
       'pitching-change': ['Fresh arm. The skipper didn\'t like what he was seeing, and I can\'t say I blame him.'],
       recap: ['{batter} {prior} his last time up.', 'Remember, {batter} {prior} earlier in this one.'],
       stats: [

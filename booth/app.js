@@ -11,7 +11,7 @@
   const LOG_MAX = 300;
 
   // Shown on the page and in the log, to confirm a reload picked up new code.
-  const BUILD = 'stats-4';
+  const BUILD = 'order-5';
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem('booth.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -389,7 +389,8 @@
     row.className = 'ev';
     const span = document.createElement('span');
     span.textContent = desc;
-    if (app.mode === 'live') {
+    // Baseball syncs with Space; row buttons there just invited wrong-row clicks.
+    if (app.mode === 'live' && app.sport !== 'mlb') {
       const b = document.createElement('button');
       b.textContent = 'sync';
       b.title = 'Click the moment this happens on your TV';
@@ -542,7 +543,8 @@
       app.queue = app.queue.filter((l) => !stale.includes(l));
       log('drop', { reason: 'stale', lines: stale.map((l) => l.text) });
     }
-    let due = app.queue.filter((l) => dueAt(l) <= now).sort((a, b) => a.seq - b.seq);
+    // Speak in time order (MLB sometimes adds an earlier event in a later poll), then arrival order.
+    let due = app.queue.filter((l) => dueAt(l) <= now).sort((a, b) => (dueAt(a) - dueAt(b)) || (a.seq - b.seq));
     if (!due.length) return maybeFinish();
 
     const urgent = due.find((l) => l.excitement === 2 && l.speaker === 'pbp');
@@ -553,7 +555,8 @@
     }
     // A goal jumps the queue; routine chatter before it is dropped.
     if (urgent) {
-      const drop = new Set(due.filter((l) => l.seq < urgent.seq && l.priority < 8));
+      const before = due.indexOf(urgent);
+      const drop = new Set(due.filter((l, i) => i < before && l.priority < 8));
       app.queue = app.queue.filter((l) => !drop.has(l));
       due = due.filter((l) => !drop.has(l));
     } else if (due.length > 3) {

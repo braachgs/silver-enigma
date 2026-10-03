@@ -248,3 +248,35 @@ test('rosterIds reads lineups and pitchers from the boxscore', () => {
   const f = { liveData: { boxscore: { teams: { away: { batters: [1, 2], pitchers: [3] }, home: { batters: [4], pitchers: [5, 6] } } } } };
   assert.deepStrictEqual(B.rosterIds(f).map((x) => `${x.id}:${x.group}`), ['1:hitting', '2:hitting', '3:pitching', '4:hitting', '5:pitching', '6:pitching']);
 });
+
+// A real MLB live feed captured during the Oct 3 2026 ALDS game (CWS @ CLE),
+// saved by the booth's logger in the bottom of the 9th.
+const real = JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', 'mlb-cws-cle-2026-10-03.json.gz'))));
+
+test('real feed: unique ids, every event timed, times never run backwards', () => {
+  const g = B.buildGame(real);
+  const evs = B.normalizePlays(real, g);
+  assert.ok(evs.length > 400);
+  assert.strictEqual(new Set(evs.map((e) => e.id)).size, evs.length);
+  for (const e of evs.filter((x) => x.type !== 'game-end')) assert.ok(Number.isFinite(e.wall), `${e.id} ${e.type} has no time`);
+  for (let i = 1; i < evs.length; i++) if (evs[i].wall && evs[i - 1].wall) assert.ok(evs[i].wall >= evs[i - 1].wall, `${evs[i].id}`);
+  // Inning header comes no later than its first batter.
+  for (const h of evs.filter((e) => e.type === 'half')) {
+    const ab = evs.find((e) => e.type === 'atbat' && e.id.split('-')[0] === h.id.split('-')[0]);
+    if (ab) assert.ok(h.wall <= ab.wall, h.id);
+  }
+});
+
+test('real feed: every booth produces clean lines; state matches MLB', () => {
+  for (const id of Object.keys(B.PERSONAS)) {
+    const g = B.buildGame(real);
+    const state = new B.GameState(g);
+    const lines = [];
+    for (const ev of B.normalizePlays(real, g)) { state.apply(ev); lines.push(...B.templateLines(ev, B.PERSONAS[id], state, seeded(3))); }
+    assert.ok(lines.length > 250, `${id}: ${lines.length}`);
+    for (const l of lines) assert.ok(!/[{}]|undefined|null|NaN|\(\d+\)|Pitching Change:/.test(l.text), `${id}: ${l.text}`);
+    assert.deepStrictEqual(state.score, { away: 3, home: 0 });
+  }
+  assert.ok(B.rosterIds(real).length >= 40);
+  assert.ok(B.buildGame(real).today.size >= 40);
+});
