@@ -11,7 +11,7 @@
   const LOG_MAX = 300;
 
   // Shown on the page and in the log, to confirm a reload picked up new code.
-  const BUILD = 'order-5';
+  const BUILD = 'claude-colour-6';
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem('booth.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -71,6 +71,7 @@
     timers: [], delay: 20, finished: false,
     spoken: [], events: [], // recent history for flags
     lags: [], lastPollAt: 0,
+    lastColourAsk: 0, // hybrid mode: when Claude was last asked for colour
     pitches: [], onTv: null, // recent live pitches with their rows, for the TV marker
     late: [], // ms each recent pitch reached the booth after its TV moment
     macVoices: [], // from the server's `say -v ?`
@@ -300,7 +301,8 @@
       app.llm = !!s.llm;
       const opt = $('source').querySelector('option[value=claude]');
       opt.disabled = !s.llm;
-      if (s.llm) opt.textContent = `Claude (${s.model})`;
+      if (s.llm) opt.textContent = `Claude writes everything (${s.model})`;
+      $('source').querySelector('option[value=hybrid]').disabled = !s.llm;
       $('llmStatus').textContent = s.llm ? '' : `Claude unavailable: ${s.llmError}. Using built-in lines.`;
       $('logFile').textContent = `Build ${BUILD}. ` + (s.logFile ? `Logging to ${s.logFile}` : 'Logging is off.');
       $('engine').querySelector('option[value=mac]').disabled = !s.macVoices;
@@ -311,7 +313,7 @@
       $('llmStatus').textContent = 'Server not reachable. Start it with: python3 server.py';
     }
     const want = store.get('source', 'templates');
-    $('source').value = want === 'claude' && app.llm ? 'claude' : 'templates';
+    $('source').value = (want === 'claude' || want === 'hybrid') && app.llm ? want : 'templates';
     $('source').addEventListener('change', () => store.set('source', $('source').value));
     $('engine').addEventListener('change', () => { store.set('engine', $('engine').value); stopSpeech(); fillVoiceSelects(); });
   }
@@ -621,6 +623,8 @@
 
   function process(events, arrivedAt) {
     const claude = $('source').value === 'claude';
+    // Hybrid: built-in play-by-play (instant, timed to each pitch) + Claude colour.
+    const hybrid = $('source').value === 'hybrid';
     for (const ev of events) {
       app.seen.add(ev.id);
       app.state.apply(ev);
@@ -647,15 +651,60 @@
       if (claude) {
         app.pending.push({ ev, arrivedAt, fallback: lines, desc, wall: app.mode === 'live' ? ev.wall : null });
         if (ev.type === 'goal') flushClaude();
+      } else if (hybrid) {
+        enqueue(lines.filter((l) => l.speaker === 'pbp'), arrivedAt, app.mode === 'live' ? ev.wall : null);
+        app.pending.push({ ev, arrivedAt, fallback: lines.filter((l) => l.speaker === 'colour'), desc, wall: app.mode === 'live' ? ev.wall : null });
       } else {
         enqueue(lines, arrivedAt, app.mode === 'live' ? ev.wall : null);
       }
       if (ev.type === 'game-end') app.finished = true;
-      if (claude && ev.type === 'game-end') flushClaude();
+      if ((claude || hybrid) && ev.type === 'game-end') flushClaude();
+    }
+  }
+
+  // Hybrid mode: ask Claude for (at most) one colour line at natural moments:
+  // a new batter, a result, a pitching change, or a quiet stretch of pitches.
+  async function flushColour() {
+    if (app.inFlight || !app.pending.length) return;
+    const batch = app.pending.splice(0);
+    const now = Date.now();
+    const moment = batch.some((b) => ['atbat', 'result', 'action', 'half', 'goal', 'penalty', 'period-end', 'game-end'].includes(b.ev.type));
+    const quiet = now - app.lastColourAsk > 20000;
+    if (!moment && !quiet) return;
+    if (now - app.lastColourAsk < 7000 && !batch.some((b) => b.ev.type === 'result' || b.ev.type === 'goal')) return;
+    app.inFlight = true;
+    app.lastColourAsk = now;
+    const g = app.game, p = persona();
+    const last = batch[batch.length - 1];
+    const payload = {
+      sport: app.sport, mode: 'colour',
+      persona: { label: p.label, style: p.llmStyle },
+      game: { away: g.away.name, home: g.home.name, venue: g.venue },
+      situation: eng().situation(app.state),
+      stats: eng().statSummary ? eng().statSummary(app.state) : '',
+      recent: app.recent.slice(-12),
+      events: app.events.slice(-8),
+    };
+    try {
+      const r = await postJSON('/api/commentary', payload);
+      // Colour follows the play it's about, a beat after the play-by-play.
+      const lines = r.lines.slice(0, 1).map((l) => ({ ...l, speaker: 'colour', excitement: 0, priority: 3, eventId: last.ev.id }));
+      if (app.running && lines.length) enqueue(lines, last.arrivedAt, last.wall ? last.wall + 1500 : null);
+      app.recent.push(...lines.map((l) => `colour: ${l.text}`));
+      app.recent = app.recent.slice(-24);
+      log('claude', { seconds: r.seconds, lines: lines.map((l) => l.text) });
+      $('llmStatus').textContent = `Claude colour: answered in ${r.seconds}s${lines.length ? '' : ' (chose to stay quiet)'}.`;
+    } catch (e) {
+      log('warn', { message: `Claude failed: ${e.message}` });
+      $('llmStatus').textContent = `Claude failed (${e.message}). Using built-in colour for that stretch.`;
+      if (app.running) for (const b of batch) enqueue(b.fallback, b.arrivedAt, b.wall);
+    } finally {
+      app.inFlight = false;
     }
   }
 
   async function flushClaude() {
+    if ($('source').value === 'hybrid') return flushColour();
     if (app.inFlight || (!app.pending.length && !app.joining)) return;
     const batch = app.pending.splice(0);
     const worth = app.joining || batch.some((b) => b.ev.priority >= 3) || Date.now() - app.lastLineAt > 25000;

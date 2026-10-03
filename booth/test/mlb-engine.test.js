@@ -280,3 +280,19 @@ test('real feed: every booth produces clean lines; state matches MLB', () => {
   assert.ok(B.rosterIds(real).length >= 40);
   assert.ok(B.buildGame(real).today.size >= 40);
 });
+
+test('statSummary gives Claude the matchup, from real feed data plus season stats', () => {
+  const g = B.buildGame(real);
+  const state = new B.GameState(g);
+  const evs = B.normalizePlays(real, g);
+  evs.slice(0, 200).forEach((e) => state.apply(e));
+  const before = B.statSummary(state);
+  assert.match(before, /^Batter: \S+ \S+.*\nPitcher: \S+ \S+/);
+  assert.match(before, /today \d+-for-\d+/); // from the live boxscore
+  B.setSeasonStats(g, state.batterId, 'hitting', { avg: '.290', homeRuns: 9, rbi: 61, obp: '.360', slg: '.420', strikeOuts: 70, atBats: 550 });
+  B.setSeasonStats(g, state.pitcherId, 'pitching', { wins: 10, losses: 9, era: '4.11', strikeOuts: 129, baseOnBalls: 40, inningsPitched: '150.1' });
+  const after = B.statSummary(state);
+  assert.match(after, /season AVG \.290, 9 HR, 61 RBI/);
+  assert.match(after, /season 10-9, 4\.11 ERA/);
+  assert.ok(!/undefined|NaN/.test(after), after);
+});

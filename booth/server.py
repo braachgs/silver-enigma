@@ -305,25 +305,67 @@ OUTPUT_SCHEMA = {
 EXCITEMENT = {"calm": 0, "up": 1, "huge": 2}
 
 
+COLOUR_RULES = """You write ONLY the colour analyst's lines. A play-by-play announcer \
+already calls every pitch and result, so never restate what just happened.
+- Return at most ONE line: one or two sentences, under 30 words, speaker "colour".
+- Talk like a real analyst between pitches: the matchup, what the pitcher is \
+doing, the hitter's numbers and earlier at-bats today, the game situation, \
+strategy. Use the stats given; never invent numbers, history, injuries or records.
+- Lines are read aloud by text-to-speech: write batting averages the way \
+broadcasters say them ("two-ninety", not ".290") and ERAs as "three-forty-one".
+- Don't repeat a stat or idea from the recent commentary.
+- Often the right answer is silence: return an empty list when there's \
+nothing worth adding."""
+
+SPORT_NAMES = {"nhl": "NHL", "mlb": "MLB"}
+
+
 def build_request(payload):
     """Turn the browser's payload into (system, user_text). Pure; tested."""
     persona = payload.get("persona") or {}
     sport = payload.get("sport") if payload.get("sport") in SPORT_RULES else "nhl"
-    system = (f"You are the broadcast booth for a live game.\n\n{COMMON_RULES}\n\n{SPORT_RULES[sport]}\n\n"
-              f"THE BOOTH TONIGHT: {persona.get('label', 'Classic broadcast')}\n{persona.get('style', '')}")
+    booth = f"THE BOOTH TONIGHT: {persona.get('label', 'Classic broadcast')}\n{persona.get('style', '')}"
+    if payload.get("mode") == "colour":
+        system = (f"You are the colour analyst in the broadcast booth for a live {SPORT_NAMES[sport]} game.\n\n"
+                  f"{COLOUR_RULES}\n\n{booth}\nYou are the COLOUR voice of this booth.")
+    else:
+        system = f"You are the broadcast booth for a live game.\n\n{COMMON_RULES}\n\n{SPORT_RULES[sport]}\n\n{booth}"
     game = payload.get("game") or {}
     parts = [
         f"Game: {game.get('away', 'Away')} at {game.get('home', 'Home')}" + (f", {game['venue']}" if game.get("venue") else "") + ".",
         f"Situation now: {payload.get('situation') or 'not available'}",
     ]
+    if payload.get("stats"):
+        parts.append("Stats you may use:\n" + str(payload["stats"]))
     if payload.get("joining"):
         parts.append("We are joining this game in progress: open with a brief welcome and the situation.")
     recent = payload.get("recent") or []
     if recent:
         parts.append("Recent commentary (do not repeat):\n" + "\n".join(f"- {r}" for r in recent[-12:]))
     events = payload.get("events") or []
-    parts.append("New events, in order:\n" + ("\n".join(f"{i + 1}. {e}" for i, e in enumerate(events)) or "(none)"))
+    label = "Latest events, in order" if payload.get("mode") == "colour" else "New events, in order"
+    parts.append(f"{label}:\n" + ("\n".join(f"{i + 1}. {e}" for i, e in enumerate(events)) or "(none)"))
     return system, "\n\n".join(parts)
+
+
+def load_env(path):
+    """Read KEY=VALUE lines (e.g. ANTHROPIC_API_KEY) from booth/.env, without
+    overriding variables already set. Keeps the key out of shell history."""
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return []
+    loaded = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip().removeprefix("export ").strip(), value.strip().strip('"').strip("'")
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
 
 
 def parse_lines(text):
@@ -351,7 +393,7 @@ class Commentator:
             self.error = "anthropic package not installed (pip install anthropic)"
             return
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-            self.error = "no ANTHROPIC_API_KEY set"
+            self.error = "no API key (put ANTHROPIC_API_KEY=... in booth/.env)"
             return
         import anthropic
         self.anthropic = anthropic
@@ -500,6 +542,7 @@ def main(argv=None):
                     help="where session logs and feed snapshots go (default: booth/logs)")
     ap.add_argument("--no-log", action="store_true", help="don't write logs")
     args = ap.parse_args(argv)
+    load_env(ROOT / ".env")
     Handler.commentator = Commentator()
     Handler.log = SessionLog(None if args.no_log else args.log_dir, echo=sys.stderr)
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)

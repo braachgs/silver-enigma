@@ -65,6 +65,33 @@ class BuildRequestTest(unittest.TestCase):
         system, _ = server.build_request({**PAYLOAD, "sport": "curling"})
         self.assertIn("live NHL game", system)
 
+    def test_colour_mode(self):
+        payload = {**PAYLOAD, "sport": "mlb", "mode": "colour", "stats": "Batter: Steven Kwan - season AVG .290"}
+        system, user = server.build_request(payload)
+        self.assertIn("colour analyst", system)
+        self.assertIn("live MLB game", system)
+        self.assertIn("at most ONE line", system)
+        self.assertNotIn("Introduce each batter", system)  # play-by-play rules don't apply
+        self.assertIn("Stats you may use:\nBatter: Steven Kwan", user)
+        self.assertIn("Latest events, in order", user)
+
+    def test_load_env(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, ".env")
+            with open(p, "w") as fh:
+                fh.write("# my key\nexport BOOTH_TEST_KEY='sk-ant-xyz'\nBOOTH_TEST_SET=already\n\nnot a line\n")
+            os.environ["BOOTH_TEST_SET"] = "keep"
+            try:
+                self.assertEqual(server.load_env(p), ["BOOTH_TEST_KEY"])
+                self.assertEqual(os.environ["BOOTH_TEST_KEY"], "sk-ant-xyz")
+                self.assertEqual(os.environ["BOOTH_TEST_SET"], "keep")
+                self.assertEqual(server.load_env(os.path.join(d, "missing")), [])
+            finally:
+                os.environ.pop("BOOTH_TEST_KEY", None)
+                os.environ.pop("BOOTH_TEST_SET", None)
+
     def test_joining_and_empty(self):
         _, user = server.build_request({"joining": True})
         self.assertIn("joining this game in progress", user)

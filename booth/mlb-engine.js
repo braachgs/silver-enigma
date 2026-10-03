@@ -110,6 +110,32 @@
 
   const plural = (n, one, many) => (n == null ? null : n === 0 ? `no ${many}` : `${n} ${n === 1 ? one : many}`);
 
+  // Plain-text stats for the current matchup, for Claude's colour commentary.
+  function statSummary(state) {
+    const g = state.game;
+    const out = [];
+    if (state.batterId) {
+      const b = (g.seasonStats.get(state.batterId) || {}).hitting;
+      const t = (g.today.get(state.batterId) || {}).batting || {};
+      const bits = [];
+      if (b && b.atBats) bits.push(`season AVG ${b.avg}, ${b.homeRuns} HR, ${b.rbi} RBI, OBP ${b.obp || '?'}, SLG ${b.slg || '?'}, ${b.strikeOuts ?? '?'} K in ${b.atBats} AB`);
+      if (t.atBats != null || t.baseOnBalls) bits.push(`today ${t.hits || 0}-for-${t.atBats || 0}${t.baseOnBalls ? `, ${t.baseOnBalls} BB` : ''}${t.strikeOuts ? `, ${t.strikeOuts} K` : ''}`);
+      const hist = state.history.get(state.batter);
+      if (hist && hist.length) bits.push(`earlier today: ${hist.join(', ')}`);
+      out.push(`Batter: ${state.batterFull || state.batter}${state.batSide ? ` (bats ${state.batSide})` : ''}${bits.length ? ' - ' + bits.join('; ') : ''}`);
+    }
+    if (state.pitcherId) {
+      const p = (g.seasonStats.get(state.pitcherId) || {}).pitching;
+      const t = (g.today.get(state.pitcherId) || {}).pitching || {};
+      const bits = [];
+      if (p && p.inningsPitched) bits.push(`season ${p.wins}-${p.losses}, ${p.era} ERA, ${p.strikeOuts} K, ${p.baseOnBalls ?? '?'} BB in ${p.inningsPitched} IP`);
+      const pitches = t.numberOfPitches || state.pitches.get(state.pitcher);
+      if (pitches) bits.push(`tonight ${pitches} pitches${t.strikeOuts != null ? `, ${t.strikeOuts} K` : ''}${t.hits != null ? `, ${t.hits} H` : ''}${t.earnedRuns != null ? `, ${t.earnedRuns} ER` : ''}`);
+      out.push(`Pitcher: ${state.pitcherFull || state.pitcher}${state.pitchHand ? ` (${state.pitchHand}HP)` : ''}${bits.length ? ' - ' + bits.join('; ') : ''}`);
+    }
+    return out.join('\n');
+  }
+
   function statVars(game, batterId, pitcherId) {
     const b = (game.seasonStats.get(batterId) || {}).hitting || {};
     const p = (game.seasonStats.get(pitcherId) || {}).pitching || {};
@@ -371,6 +397,8 @@
           this.balls = 0; this.strikes = 0;
           this.batter = ev.batter; this.pitcher = ev.pitcher;
           this.batterId = ev.batterId; this.pitcherId = ev.pitcherId;
+          this.batterFull = ev.batterFull; this.pitcherFull = ev.pitcherFull;
+          this.batSide = ev.batSide; this.pitchHand = ev.pitchHand;
           break;
         case 'pitch':
           if (ev.count) { this.balls = ev.count.balls; this.strikes = ev.count.strikes; }
@@ -940,7 +968,7 @@
   const BallBooth = {
     sport: 'mlb', buildGame, refreshGame, normalizePlays, inProgress, describe, situation, boardText,
     GameState, templateLines, joinLine, scoreLine, finalLine, lineKey, PERSONAS, countText, basesText,
-    rosterIds, setSeasonStats, avgWords, statVars,
+    rosterIds, setSeasonStats, avgWords, statVars, statSummary,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = BallBooth;

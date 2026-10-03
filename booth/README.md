@@ -29,29 +29,32 @@ innings, long stoppages) are skipped.
 | Baseball | Cookie Monster (parody), Golden-Age Radio, Glasgow Fitba | Every pitch: type, speed, ball/strike/foul, count; every at-bat result with exit velocity and distance; steals, wild pitches, pitching changes |
 | Hockey | Saturday Night '93, Glasgow Fitba, Cookie Monster | Faceoffs, shots, hits, blocks, giveaways, goals (scorer, assists), penalties |
 
-### Optional: commentary written by Claude
+### Optional: colour commentary by Claude
 
-The built-in lines are free and instant but limited. For commentary that
-reacts to the actual game (score, situation, who did what earlier), let Claude
-write it:
+The built-in lines are free and instant but repeat over a long game. With an
+Anthropic API key, choose **Commentary written by → Built-in play-by-play +
+Claude colour** (recommended): the built-in voice still calls every pitch,
+timed to the pitch, and Claude adds at most one analyst's line at natural
+moments (new batter, a result, a pitching change, a quiet spell), using the
+matchup's season and today's stats, earlier at-bats and the game situation.
+**Claude writes everything** also exists, but batches pitch calls together.
+
+Setup (once):
 
 ```bash
-pip install anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
+pip3 install anthropic
+cd booth
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env     # your key; .env is never committed
 python3 server.py
 ```
 
-Then choose **Commentary written by → Claude**. If a request fails, the booth
-falls back to the built-in lines for that stretch of play.
-
-- Model: `claude-opus-5-5` at low effort. Override with `BOOTH_MODEL=...`
-  (a smaller model such as `claude-haiku-4-5` is cheaper and faster, but it
-  writes worse commentary).
-- Cost is a rough estimate, not measured. Requests go out every few seconds
-  while events are arriving, about 250–400 per game, which is a few dollars
-  per game on Opus. Baseball is at the high end because every pitch is an event.
-- Latency: each batch takes a few seconds. Keep the delay at 15s or more. The
-  page warns you if Claude is slower than your delay.
+- Get a key at console.anthropic.com → API Keys (buy a few dollars of credits
+  under Billing; set a monthly limit under Limits if you like).
+- Model: `claude-opus-5-5` at low effort. Override with `BOOTH_MODEL=...` in
+  `.env` (a smaller model is cheaper and faster, but writes worse colour).
+- Cost is an estimate, not measured: roughly 100–150 short requests per
+  baseball game in hybrid mode, so a dollar or a few per game.
+- If a request fails, that moment falls back to the built-in colour line.
 
 ## Mac voices (including Siri)
 
