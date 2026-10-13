@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" data-system="nyc">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Day Board</title>
+  <meta name="description" content="Your calendar as a subway departure board. New York City Subway and London Underground designs." />
+  <meta name="theme-color" content="#0D0D0F" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Day Board" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="css/app.css" />
+  <script>
+    // Apply the saved subway system before first paint to avoid a flash.
+    try {
+      var s = JSON.parse(localStorage.getItem('dayboard.v1') || '{}').system;
+      if (s) document.documentElement.setAttribute('data-system', s);
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div id="banner"></div>
+    <main id="view"></main>
+  </div>
+  <nav id="tabs" class="tabs" aria-label="Day Board"></nav>
+  <dialog id="sheet" class="sheet" aria-label="Details"></dialog>
+  <div id="display" class="display" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript>Day Board needs JavaScript.</noscript>
+
+  <script src="config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/systems.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/google.js"></script>
+  <script src="js/sample.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
