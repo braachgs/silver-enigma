@@ -34,20 +34,21 @@
     }
   }
 
+  // flap.code is left unset so the board code follows the name (Work -> WRK).
   const DEFAULT_LINES = [
-    { name: 'Work', nyc: { letter: 'A', color: 'blue' }, london: { line: 'victoria' } },
-    { name: 'Focus', nyc: { letter: 'B', color: 'orange' }, london: { line: 'bakerloo' } },
-    { name: 'Deadlines', nyc: { letter: 'C', color: 'red' }, london: { line: 'central' } },
-    { name: 'Personal', nyc: { letter: 'D', color: 'yellow' }, london: { line: 'circle' } },
-    { name: 'Health', nyc: { letter: 'E', color: 'green' }, london: { line: 'district' } },
-    { name: 'Social', nyc: { letter: 'F', color: 'purple' }, london: { line: 'metropolitan' } },
+    { name: 'Work', nyc: { letter: 'A', color: 'blue' }, london: { line: 'victoria' }, flap: { color: 'blue' } },
+    { name: 'Focus', nyc: { letter: 'B', color: 'orange' }, london: { line: 'bakerloo' }, flap: { color: 'orange' } },
+    { name: 'Deadlines', nyc: { letter: 'C', color: 'red' }, london: { line: 'central' }, flap: { color: 'red' } },
+    { name: 'Personal', nyc: { letter: 'D', color: 'yellow' }, london: { line: 'circle' }, flap: { color: 'yellow' } },
+    { name: 'Health', nyc: { letter: 'E', color: 'green' }, london: { line: 'district' }, flap: { color: 'green' } },
+    { name: 'Social', nyc: { letter: 'F', color: 'purple' }, london: { line: 'metropolitan' }, flap: { color: 'magenta' } },
   ];
 
   function freshState() {
     return {
       version: 1,
       system: 'nyc',
-      lines: DEFAULT_LINES.map((l) => ({ id: uid(), name: l.name, nyc: { ...l.nyc }, london: { ...l.london } })),
+      lines: DEFAULT_LINES.map((l) => ({ id: uid(), name: l.name, nyc: { ...l.nyc }, london: { ...l.london }, flap: { ...l.flap } })),
       accounts: [], // { email, defaultLine, write, calendars: [{ id, name, color, role, primary, enabled, line }] }
       localEvents: [], // { id, title, allDay, start, end, location, notes, line }
       overrides: {}, // event key -> line id
@@ -55,6 +56,7 @@
         hour12: 'auto', // 'auto' | true | false
         showDeparted: false,
         announce: false,
+        flapSound: false,
         sample: true,
         clientId: '',
         lastDest: 'local',
@@ -93,7 +95,8 @@
     const letter = P.MTA_LETTERS.find((x) => !usedLetters.has(x)) || 'S';
     const usedTube = new Set(state.lines.map((l) => l.london && l.london.line));
     const tube = (P.TFL_LINES.find((x) => !usedTube.has(x.id)) || P.TFL_LINES[0]).id;
-    return { nyc: { letter, color: P.MTA_LETTER_COLOR[letter] || 'blue' }, london: { line: tube } };
+    const color = P.MTA_LETTER_COLOR[letter] || 'blue';
+    return { nyc: { letter, color }, london: { line: tube }, flap: { color: P.NYC_TO_FLAP[color] || 'blue' } };
   }
 
   function addLine(name, styles) {
@@ -108,6 +111,10 @@
     if (patch.name != null) l.name = patch.name;
     if (patch.nyc) l.nyc = { ...l.nyc, ...patch.nyc };
     if (patch.london) l.london = { ...l.london, ...patch.london };
+    if (patch.flap) {
+      l.flap = { ...(l.flap || {}), ...patch.flap };
+      if (!l.flap.code) delete l.flap.code; // blank code -> derive from the name
+    }
     commit();
   }
   function removeLine(id) {

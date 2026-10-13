@@ -93,7 +93,7 @@
     if (e.start > now) {
       if (!sameDay) return S.dateShort(e.start);
       const m = mins(now, e.start);
-      return m < 1 ? (S.id === 'london' ? 'Due' : 'Arriving now') : `In ${durText(m)}`;
+      return m < 1 ? S.copy.arriving : `In ${durText(m)}`;
     }
     return sameDay ? S.copy.departed : S.dateShort(e.start);
   }
@@ -234,7 +234,7 @@
           }, h('span', { class: 'pill-diamond', 'aria-hidden': 'true' }), S.copy.allDay(allDay.length)) : null)
         : null,
       ui.allDayOpen && allDay.length ? allDayPanel(allDay) : null,
-      h('div', { class: 'colhead' }, h('span', {}, S.copy.departures), h('span', {}, isToday ? S.copy.timeCol : 'Time')));
+      h('div', { class: 'colhead' }, h('span', {}, S.copy.departures), h('span', {}, isToday ? S.copy.timeCol : S.copy.timeColOther)));
   }
 
   function allDayPanel(list) {
@@ -262,7 +262,7 @@
         dots.get(k).add(hex);
       }
     }
-    const weekday = new Intl.DateTimeFormat(S.id === 'london' ? 'en-GB' : 'en-US', { weekday: 'narrow' });
+    const weekday = new Intl.DateTimeFormat(S.locale, { weekday: 'narrow' });
     const sunday = new Date(2026, 0, 4); // a Sunday
     const heads = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(sunday);
@@ -294,6 +294,7 @@
 
   function row(e, { live = false, primary = false, past = false, clock = false, now = Date.now() } = {}) {
     const S = sys();
+    if (S.layout === 'flap') return flapRow(e, { live, primary, past, now });
     let count;
     if (clock || past) {
       const p = S.timeParts(e.start, h12());
@@ -314,6 +315,39 @@
       e.location ? h('span', { class: 'row-sub' }, e.location) : null,
       h('span', { class: 'row-when' }, when)),
     h('span', { class: 'row-count' }, h('b', {}, count.big), count.unit ? h('small', {}, count.unit) : null),
+    progress != null ? h('span', { class: 'progress', 'aria-hidden': 'true' },
+      h('i', { style: { width: `${(progress * 100).toFixed(1)}%` } })) : null);
+  }
+
+  // How many flap cells fit across a board row (matches the CSS cell size).
+  function flapCells() {
+    const vw = Math.min(window.innerWidth || 390, 520);
+    const pitch = Math.max(12, Math.min(15, vw * 0.038)) + 2;
+    return Math.max(8, Math.floor((vw - 98) / pitch));
+  }
+
+  // Split-flap row: scheduled time and remarks on top, the event title across
+  // one or two flap lines, then location and duration in small type.
+  function flapRow(e, { live = false, primary = false, past = false, now = Date.now() } = {}) {
+    const S = sys();
+    const F = DB.flap;
+    const width = flapCells();
+    const time = S.boardTime(e.start, h12());
+    const rk = S.remark(e, now);
+    const dur = Math.max(0, Math.round((e.end - e.start) / 60000));
+    const sub = [e.location, live ? `${durText(mins(now, e.end))} left` : dur ? durText(dur) : null].filter(Boolean).join(' · ');
+    const progress = live ? Math.min(1, Math.max(0, (now - e.start) / Math.max(1, e.end - e.start))) : null;
+    return h('button', {
+      class: `row flaprow${live ? ' live' : ''}${primary ? ' primary' : ''}${past ? ' past' : ''}`,
+      onclick: () => openDetail(e.key),
+    },
+    h('span', { class: 'row-badge' }, S.badge(e.lineObj, { outline: primary })),
+    h('span', { class: 'fr-main' },
+      h('span', { class: 'fr-top' },
+        F.text(time, time.length, `${e.key}|t`, 'board', { cls: 'fl-time' }),
+        F.text(rk.text, 10, `${e.key}|r`, 'board', { cls: `fl-remark tone-${rk.tone}`, delay: 120 })),
+      F.wrap(e.title, width, 2).map((line, i) => F.text(line, width, `${e.key}|d${i}`, 'board', { cls: 'fl-dest', delay: 60 + i * 80 })),
+      sub ? h('span', { class: 'row-sub' }, sub) : null),
     progress != null ? h('span', { class: 'progress', 'aria-hidden': 'true' },
       h('i', { style: { width: `${(progress * 100).toFixed(1)}%` } })) : null);
   }
@@ -341,6 +375,7 @@
   function boardView() {
     const S = sys();
     const now = Date.now();
+    DB.flap.begin('board');
     const today = todayKey();
     const isToday = ui.date === today;
     let evs = eventsOn(ui.date);
@@ -372,6 +407,8 @@
       timed.forEach((e) => list.append(row(e, { past, clock: true })));
     }
     list.append(boardFooter());
+    DB.flap.end('board');
+    DB.flap.takeFlips('board');
 
     const wrap = h('div', { class: 'board-view' }, header, list);
     attachSwipe(wrap);
@@ -809,21 +846,26 @@
     const P = DB.palette;
     const existing = id ? store.lineById(id) : null;
     const draft = existing
-      ? { name: existing.name, nyc: { ...existing.nyc }, london: { ...existing.london } }
+      ? { name: existing.name, nyc: { ...existing.nyc }, london: { ...existing.london }, flap: { ...(existing.flap || {}) } }
       : { name: '', ...store.nextLineDefaults() };
     const preview = h('div', { class: 'line-preview' });
     const paint = () => {
-      const l = { id: 'draft', name: draft.name || 'New line', nyc: draft.nyc, london: draft.london };
+      const l = { id: 'draft', name: draft.name || 'New line', nyc: draft.nyc, london: draft.london, flap: draft.flap };
       preview.replaceChildren(
         h('div', { class: 'lp-item' }, DB.SYSTEMS.nyc.badge(l), h('small', {}, 'New York')),
-        h('div', { class: 'lp-item' }, DB.SYSTEMS.london.badge(l, { wide: true }), h('small', {}, 'London')));
+        h('div', { class: 'lp-item' }, DB.SYSTEMS.london.badge(l, { wide: true }), h('small', {}, 'London')),
+        h('div', { class: 'lp-item' }, DB.SYSTEMS.flap.badge(l), h('small', {}, 'Split-flap')));
+      const flapColor = draft.flap.color || P.NYC_TO_FLAP[draft.nyc.color] || 'blue';
       for (const b of body.querySelectorAll('[data-letter]')) b.setAttribute('aria-pressed', String(b.dataset.letter === draft.nyc.letter));
       for (const b of body.querySelectorAll('[data-color]')) b.setAttribute('aria-pressed', String(b.dataset.color === draft.nyc.color));
       for (const b of body.querySelectorAll('[data-tube]')) b.setAttribute('aria-pressed', String(b.dataset.tube === draft.london.line));
+      for (const b of body.querySelectorAll('[data-fcolor]')) b.setAttribute('aria-pressed', String(b.dataset.fcolor === flapColor));
+      const code = body.querySelector('#l-code');
+      if (code) code.placeholder = P.flapCode(draft.name || 'New line');
     };
     const name = h('input', {
       type: 'text', class: 'text-input', id: 'l-name', placeholder: 'Work, Family, Gym…', maxlength: 40, value: draft.name,
-      oninput: (e) => { draft.name = e.target.value; },
+      oninput: (e) => { draft.name = e.target.value; paint(); },
     });
 
     const nycPicker = h('div', { class: 'picker-block' },
@@ -843,14 +885,31 @@
         type: 'button', class: 'tube', 'data-tube': t.id, style: { '--c': t.hex, '--i': t.ink },
         onclick: () => { draft.london.line = t.id; paint(); },
       }, t.name))));
+    const flapPicker = h('div', { class: 'picker-block' },
+      h('label', { class: 'cap', for: 'l-code' }, 'Board code'),
+      h('input', {
+        type: 'text', class: 'text-input code-input', id: 'l-code', maxlength: 3, value: draft.flap.code || '',
+        autocapitalize: 'characters', autocomplete: 'off', spellcheck: 'false',
+        oninput: (e) => {
+          const v = e.target.value.toUpperCase().replace(/[^A-Z0-9&]/g, '').slice(0, 3);
+          e.target.value = v;
+          draft.flap.code = v;
+          paint();
+        },
+      }),
+      h('small', { class: 'help' }, 'Up to three letters or digits. Leave it blank to use the name.'),
+      h('span', { class: 'cap' }, 'Color'),
+      h('div', { class: 'swatches' }, P.FLAP_COLORS.map((c) => h('button', {
+        type: 'button', class: 'swatch', 'data-fcolor': c.id, title: c.label, 'aria-label': c.label, style: { '--c': c.hex },
+        onclick: () => { draft.flap.color = c.id; paint(); },
+      }))));
+    const pickers = { nyc: nycPicker, london: londonPicker, flap: flapPicker };
 
     const body = h('div', {},
       preview,
       h('div', { class: 'detail-block' }, h('label', { class: 'cap', for: 'l-name' }, 'Name'), name),
-      S.id === 'london' ? londonPicker : nycPicker,
-      h('p', { class: 'help' }, S.id === 'london'
-        ? 'Switch to New York in Settings to pick this line’s route bullet.'
-        : 'Switch to London in Settings to pick this line’s Tube line.'),
+      pickers[S.id] || nycPicker,
+      h('p', { class: 'help' }, 'Each board style keeps its own look for this line. Switch styles in Settings to edit the others.'),
       existing ? h('div', { class: 'detail-actions' },
         h('button', { type: 'button', class: 'btn-outline', onclick: () => { store.moveLine(id, -1); toast('Moved up'); } }, 'Move up'),
         h('button', { type: 'button', class: 'btn-outline', onclick: () => { store.moveLine(id, 1); toast('Moved down'); } }, 'Move down')) : null,
@@ -859,8 +918,8 @@
           type: 'button', class: 'btn-primary',
           onclick: () => {
             const nm = draft.name.trim() || 'New line';
-            if (existing) store.updateLine(id, { name: nm, nyc: draft.nyc, london: draft.london });
-            else store.addLine(nm, { nyc: draft.nyc, london: draft.london });
+            if (existing) store.updateLine(id, { name: nm, nyc: draft.nyc, london: draft.london, flap: draft.flap });
+            else store.addLine(nm, { nyc: draft.nyc, london: draft.london, flap: draft.flap });
             closeSheet();
           },
         }, existing ? 'Save line' : 'Add line'),
@@ -949,10 +1008,14 @@
 
     return sheetShell('Settings',
       h('section', { class: 'set-section' },
-        h('h3', { class: 'cap' }, 'Subway system'),
+        h('h3', { class: 'cap' }, 'Board style'),
         h('div', { class: 'sys-cards' }, DB.systemList.map((x) => h('button', {
           class: 'sys-card', 'aria-pressed': String(x.id === st.system),
-          onclick: () => { store.set('system', x.id); refreshSheet(true); },
+          onclick: () => {
+            if (x.layout === 'flap' && st.system !== x.id) DB.flap.prime('board');
+            store.set('system', x.id);
+            refreshSheet(true);
+          },
         }, sysPreview(x), h('strong', {}, x.name), h('small', {}, x.tagline))))),
 
       h('section', { class: 'set-section' },
@@ -977,6 +1040,8 @@
         toggleRow('Show departed events', st.settings.showDeparted, (v) => { ui.departedOpen = null; store.set('showDeparted', v); }),
         toggleRow('Spoken announcements', st.settings.announce, (v) => { store.set('announce', v); if (v) testAnnouncement(); },
           'Calls out your next event five minutes ahead and as it starts, while Day Board is open.'),
+        st.system === 'flap' ? toggleRow('Flap sound on the platform display', st.settings.flapSound,
+          (v) => { store.set('flapSound', v); if (v) ensureAudio(); }) : null,
         toggleRow('Sample day when the board is empty', st.settings.sample, (v) => store.set('sample', v))),
 
       h('section', { class: 'set-section' },
@@ -990,7 +1055,7 @@
           },
         }, 'Reset Day Board')),
 
-      h('p', { class: 'about' }, 'A rebuild of Day Board, the subway-board calendar by @rillotv. Not affiliated with the MTA or Transport for London.'));
+      h('p', { class: 'about' }, 'A rebuild of Day Board, the subway-board calendar by @rillotv. Not affiliated with the MTA, Transport for London, or any railway.'));
   }
 
   async function addAccountFlow() {
@@ -1017,13 +1082,16 @@
 
   // ------------------------------------------------------- platform display
   // A full-screen arrivals board for a spare phone or tablet, modelled on
-  // Day Board's home-screen widgets (NYC) and a Tube dot-matrix indicator (London).
+  // Day Board's home-screen widgets (NYC), a Tube dot-matrix indicator
+  // (London) and a mechanical split-flap departure board.
   let wakeLock = null;
   let displaySig = '';
 
   function openDisplay() {
     displayEl.hidden = false;
     displaySig = '';
+    if (store.state.settings.flapSound) ensureAudio();
+    if (sys().layout === 'flap') DB.flap.prime('display'); // flip every flap in from blank
     renderDisplay();
     const root = document.documentElement;
     if (root.requestFullscreen) root.requestFullscreen().catch(() => {});
@@ -1041,6 +1109,10 @@
   function renderDisplay() {
     const S = sys();
     const now = Date.now();
+    if (S.layout === 'flap') {
+      renderFlapDisplay(S, now);
+      return;
+    }
     const evs = eventsOn(todayKey());
     const timed = evs.filter((e) => !e.allDay && e.end > now).sort(byStart);
     const allDay = evs.filter((e) => e.allDay);
@@ -1097,13 +1169,103 @@
     if (clock) clock.textContent = isLondon ? S.clock(now, h12(), true) : S.clock(now, h12());
   }
 
+  // Split-flap board: fixed slots like a real board, so when an event departs
+  // every row below flips up to the next one. Rebuilt only when content (or
+  // the minute on the clock) changes.
+  function renderFlapDisplay(S, now) {
+    const F = DB.flap;
+    const evs = eventsOn(todayKey());
+    const timed = evs.filter((e) => !e.allDay && e.end > now).sort(byStart);
+    const allDay = evs.filter((e) => e.allDay);
+    const vw = window.innerWidth || 390;
+    const wide = vw >= 640;
+    const inner = Math.min(vw - 32, 1100) - 32; // panel width minus its padding
+    const timeLen = S.boardTime(now, h12()).length;
+    // Wide: one line per slot. Narrow: time + remarks share a line, so size
+    // the cells to fit both beside the line tile.
+    const cw = wide
+      ? Math.max(14, Math.min(22, vw * 0.02))
+      : Math.max(9, Math.min(18, (inner - 58) / (timeLen + 10) - 2));
+    const pitch = cw + 2;
+    const destLen = Math.max(8, Math.floor((wide ? inner - 52 - (timeLen + 10) * pitch - 32 : inner - 52) / pitch));
+    const SLOTS = wide ? 8 : 7;
+    const slots = Array.from({ length: SLOTS }, (_, i) => timed[i] || null);
+    const clock = S.boardTime(now, h12());
+    const sig = JSON.stringify([vw, h12(), clock, destLen, allDay.map((e) => e.key),
+      slots.map((e) => e && [e.key, e.title, e.lineObj.id, S.remark(e, now).text, e.start])]);
+    if (sig === displaySig) return;
+    displaySig = sig;
+
+    F.begin('display');
+    const rows = slots.map((e, i) => {
+      const rk = e ? S.remark(e, now) : { text: '', tone: 'ontime' };
+      const d = i * 90;
+      const tile = e ? S.badge(e.lineObj) : h('span', { class: 'badge ftile blank', 'aria-hidden': 'true' });
+      const time = F.text(e ? S.boardTime(e.start, h12()) : '', timeLen, `s${i}|t`, 'display', { cls: 'fl-time', delay: d });
+      const dest = F.text(e ? F.fit(e.title, destLen) : '', destLen, `s${i}|d`, 'display', { cls: 'fl-dest', delay: d + 60 });
+      const remark = F.text(rk.text, 10, `s${i}|r`, 'display', { cls: `fl-remark tone-${rk.tone}`, delay: d + 160 });
+      return wide
+        ? h('div', { class: 'fd-row' }, tile, time, dest, remark)
+        : h('div', { class: 'fd-row' }, tile, h('div', { class: 'fd-stack' }, h('div', { class: 'fd-line' }, time, remark), dest));
+    });
+    const panel = h('div', {
+      class: `disp disp-flap${wide ? ' fd-wide' : ''}`,
+      style: { '--cw': `${cw.toFixed(2)}px`, '--tw': `${(timeLen * pitch - 2).toFixed(2)}px`, '--rw': `${(10 * pitch - 2).toFixed(2)}px` },
+    },
+      h('div', { class: 'fd-head' },
+        h('div', { class: 'fd-titles' }, h('strong', {}, 'Departures'), h('span', {}, S.dateShort(now))),
+        F.text(clock, clock.length, 'clock', 'display', { cls: 'fl-clock' })),
+      wide ? h('div', { class: 'fd-cols' }, h('span', {}), h('span', {}, 'Time'), h('span', {}, 'Destination'), h('span', {}, 'Remarks')) : null,
+      h('div', { class: 'fd-rows' }, rows),
+      h('div', { class: 'fd-foot' },
+        h('span', { class: 'fd-allday' }, h('b', {}, 'DAY BOARD'),
+          allDay.length ? ` · All day: ${allDay.map((e) => e.title).join(' · ')}` : ''),
+        h('span', {}, timed.length > SLOTS ? `+${timed.length - SLOTS} more · ` : '', 'Tap to close')));
+    F.end('display');
+    displayEl.replaceChildren(panel);
+    const flipped = F.takeFlips('display');
+    if (store.state.settings.flapSound) clatter(flipped);
+  }
+
   // ------------------------------------------------------- announcements
   const announced = new Set();
   let audio = null;
 
+  function ensureAudio() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+    } catch (_) {
+      audio = null;
+    }
+  }
+
+  // The rattle of flaps settling: one short filtered noise click per flipped
+  // cell, spread over the cascade.
+  let clickBuf = null;
+  function clatter(n) {
+    if (!n || !audio || audio.state !== 'running') return;
+    if (!clickBuf) {
+      const len = Math.floor(audio.sampleRate * 0.014);
+      clickBuf = audio.createBuffer(1, len, audio.sampleRate);
+      const d = clickBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+    }
+    const t0 = audio.currentTime + 0.02;
+    const count = Math.min(n, 48);
+    for (let i = 0; i < count; i++) {
+      const src = audio.createBufferSource();
+      const g = audio.createGain();
+      src.buffer = clickBuf;
+      g.gain.value = 0.12 + Math.random() * 0.08;
+      src.connect(g).connect(audio.destination);
+      src.start(t0 + i * 0.026 + Math.random() * 0.01);
+    }
+  }
+
   function chime() {
     if (!audio || audio.state !== 'running') return 0;
-    const notes = sys().id === 'london' ? [523.25, 659.25] : [659.25, 523.25];
+    const notes = sys().chimeNotes || [659.25, 523.25];
     notes.forEach((f, i) => {
       const o = audio.createOscillator();
       const g = audio.createGain();
@@ -1117,7 +1279,7 @@
       o.start(t);
       o.stop(t + 0.65);
     });
-    return 900;
+    return notes.length * 420 + 60;
   }
 
   function speak(text) {
@@ -1136,10 +1298,7 @@
   }
 
   function testAnnouncement() {
-    try {
-      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-      if (audio.state === 'suspended') audio.resume();
-    } catch (_) { audio = null; }
+    ensureAudio();
     const now = Date.now();
     const next = eventsOn(todayKey()).filter((e) => !e.allDay && e.start > now).sort(byStart)[0];
     const S = sys();
@@ -1242,6 +1401,14 @@
       if (e.key === 'ArrowLeft') goDate(addDays(ui.date, -1));
       else if (e.key === 'ArrowRight') goDate(addDays(ui.date, 1));
       else if (e.key === 't') goDate(todayKey());
+    });
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (ui.tab !== 'add') render();
+        if (!displayEl.hidden) { displaySig = ''; renderDisplay(); }
+      }, 150);
     });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) { render(); sync(false); }

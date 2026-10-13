@@ -6,7 +6,9 @@
  * the chrome) live in css/app.css under [data-system="<id>"].
  *
  * To add a system: add an entry to SYSTEMS below with the same shape, add a
- * per-line style key to DEFAULT_LINES in store.js, and a CSS token block. */
+ * per-line style key to DEFAULT_LINES in store.js, and a CSS token block.
+ * A system with `layout: 'flap'` renders board rows and the platform display
+ * with split-flap cells (js/flap.js) instead of countdown numerals. */
 (function (DB) {
   'use strict';
   const { h, s } = DB.util;
@@ -95,7 +97,9 @@
     name: 'New York City Subway',
     tagline: 'Helvetica, route bullets, countdown clocks',
     themeColor: '#0D0D0F',
+    locale: 'en-US',
     voiceLang: 'en-US',
+    chimeNotes: [659.25, 523.25],
     ...nycClock,
 
     style(line) {
@@ -132,6 +136,8 @@
     copy: {
       departures: 'Departures',
       timeCol: 'Time',
+      timeColOther: 'Time',
+      arriving: 'Arriving now',
       liveTag: 'Live',
       allDay: (n) => `${n} all-day`,
       allDayTitle: 'All-day',
@@ -171,7 +177,9 @@
     name: 'London Underground',
     tagline: 'Johnston-style type, line colours, dot-matrix indicators',
     themeColor: TFL_BLUE,
+    locale: 'en-GB',
     voiceLang: 'en-GB',
+    chimeNotes: [523.25, 659.25],
     ...londonClock,
 
     style(line) {
@@ -213,6 +221,8 @@
     copy: {
       departures: 'Departures',
       timeCol: 'Due',
+      timeColOther: 'Time',
+      arriving: 'Due',
       liveTag: 'Now',
       allDay: (n) => `${n} all day`,
       allDayTitle: 'All day',
@@ -241,8 +251,135 @@
     lineOptions: { lines: TFL_LINES },
   };
 
-  DB.SYSTEMS = { nyc, london };
-  DB.systemList = [nyc, london];
-  DB.palette = { MTA_COLORS, MTA_LETTERS, MTA_LETTER_COLOR, TFL_LINES, TFL_BLUE, TFL_RED };
+  // ---------------------------------------------------------- Split-flap
+  // The mechanical departure board of mainline stations and airports. It
+  // speaks in scheduled times and remarks (ON TIME, BOARDING, FINAL CALL)
+  // rather than minute countdowns, so it only changes at event boundaries.
+  const FLAP_COLORS = [
+    { id: 'blue', hex: '#1F5AA6', ink: '#FFFFFF', label: 'Blue' },
+    { id: 'orange', hex: '#E8711C', ink: '#FFFFFF', label: 'Orange' },
+    { id: 'red', hex: '#C8102E', ink: '#FFFFFF', label: 'Red' },
+    { id: 'yellow', hex: '#F2C500', ink: '#111111', label: 'Yellow' },
+    { id: 'green', hex: '#2E8540', ink: '#FFFFFF', label: 'Green' },
+    { id: 'magenta', hex: '#B0287A', ink: '#FFFFFF', label: 'Magenta' },
+    { id: 'teal', hex: '#00838F', ink: '#FFFFFF', label: 'Teal' },
+    { id: 'purple', hex: '#6A4BAF', ink: '#FFFFFF', label: 'Purple' },
+    { id: 'brown', hex: '#8B5A2B', ink: '#FFFFFF', label: 'Brown' },
+    { id: 'white', hex: '#EDEAE0', ink: '#111111', label: 'White' },
+    { id: 'gray', hex: '#7D8085', ink: '#FFFFFF', label: 'Gray' },
+  ];
+  // Lines without a flap colour borrow the hue of their NYC bullet.
+  const NYC_TO_FLAP = {
+    blue: 'blue', orange: 'orange', red: 'red', yellow: 'yellow', green: 'green', purple: 'magenta',
+    lime: 'green', brown: 'brown', gray: 'gray', shuttle: 'gray', teal: 'teal',
+  };
+
+  // Three-letter board code from a line name, consonant-first like
+  // "Work" -> WRK, "Personal" -> PRS, "Health" -> HLT.
+  function flapCode(name) {
+    const letters = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!letters) return 'LN';
+    let code = letters[0];
+    for (const ch of letters.slice(1)) {
+      if (code.length === 3) break;
+      if (!'AEIOU'.includes(ch)) code += ch;
+    }
+    return code.length < 3 ? (code + letters.slice(1)).slice(0, 3) : code;
+  }
+
+  const flapClock = makeClock('en-US', true);
+  const flap = {
+    id: 'flap',
+    name: 'Split-Flap Departures',
+    tagline: 'Mechanical station board: times, remarks, flipping flaps',
+    themeColor: '#161616',
+    locale: 'en-US',
+    voiceLang: 'en-US',
+    chimeNotes: [783.99, 659.25, 523.25],
+    layout: 'flap',
+    ...flapClock,
+
+    style(line) {
+      const cfg = line.flap || {};
+      const colorId = cfg.color || NYC_TO_FLAP[(line.nyc || {}).color] || 'blue';
+      const c = FLAP_COLORS.find((x) => x.id === colorId) || FLAP_COLORS[0];
+      const code = (cfg.code || flapCode(line.name)).slice(0, 3);
+      return { hex: c.hex, ink: c.ink, mark: code, title: code };
+    },
+
+    // A coloured flap tile carrying the line's code; hollow for all-day events.
+    badge(line, { allDay = false, outline = false } = {}) {
+      const st = this.style(line);
+      return h('span', {
+        class: `badge ftile${allDay ? ' hollow' : ''}${outline ? ' outline' : ''}`,
+        style: { '--c': st.hex, '--i': st.ink },
+        role: 'img',
+        'aria-label': `${st.mark} line, ${line.name}${allDay ? ', all day' : ''}`,
+      }, h('span', { class: 'mark', 'aria-hidden': 'true' }, st.mark));
+    },
+
+    // Remarks column: changes only at event boundaries.
+    remark(e, now) {
+      if (e.allDay) return { text: 'ALL DAY', tone: 'info' };
+      if (e.end <= now && e.start < now) return { text: 'DEPARTED', tone: 'past' };
+      if (e.start <= now) return { text: 'NOW', tone: 'live' };
+      const m = minutesBetween(now, e.start);
+      if (m <= 2) return { text: 'FINAL CALL', tone: 'final' };
+      if (m <= 15) return { text: 'BOARDING', tone: 'boarding' };
+      return { text: 'ON TIME', tone: 'ontime' };
+    },
+
+    // "10:30A" style board time: five cells plus an A/P cell on a 12-hour clock.
+    boardTime(t, hour12) {
+      const p = flapClock.timeParts(t, hour12);
+      return p.main.padStart(5, ' ') + (p.ap ? p.ap.charAt(0) : '');
+    },
+
+    dateLong: (t) => fmt('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(t),
+    dateShort: (t) => fmt('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(t).replace(',', '').toUpperCase(),
+    monthTitle: (t) => fmt('en-US', { month: 'long', year: 'numeric' }).format(t),
+    weekStart: 0,
+
+    countdown(mins, live) {
+      if (mins < 1) return live ? { big: '<1', unit: 'MIN LEFT' } : { big: 'NOW', unit: 'FINAL CALL' };
+      if (mins < 60) return { big: String(mins), unit: live ? 'MIN LEFT' : 'MIN' };
+      return { big: hhmm(mins), unit: live ? 'HR LEFT' : 'HR' };
+    },
+
+    copy: {
+      departures: 'Time · Destination',
+      timeCol: 'Remarks',
+      timeColOther: 'Remarks',
+      arriving: 'Final call',
+      liveTag: 'Now',
+      allDay: (n) => `${n} all-day`,
+      allDayTitle: 'All-day',
+      empty: 'No departures scheduled',
+      emptySub: 'Nothing on the board for this day.',
+      ended: 'All trains have departed',
+      endedSub: 'That was the last departure today.',
+      departed: 'Departed',
+      linesTitle: 'Lines',
+      addLine: 'Add line',
+      mapTitle: 'Route map',
+      mapEmpty: 'No service to map for this day.',
+      now: 'Now',
+      status: { none: 'No service', good: 'On time', minor: 'Delayed', severe: 'Delayed' },
+      display: { ln: '', event: 'DESTINATION', min: 'REMARKS', allDay: 'ALL DAY', live: 'NOW' },
+      sample: 'Sample day',
+      announceSoon: (title, mins, where) =>
+        `Now boarding: ${title}${where ? `, at ${where}` : ''}. Departing in ${mins} ${mins === 1 ? 'minute' : 'minutes'}.`,
+      announceNow: (title, where) =>
+        `${title}${where ? `, at ${where},` : ''} is now departing. All aboard.`,
+    },
+
+    map: { track: 6, stop: 'circle' },
+
+    lineOptions: { colors: FLAP_COLORS },
+  };
+
+  DB.SYSTEMS = { nyc, london, flap };
+  DB.systemList = [nyc, london, flap];
+  DB.palette = { MTA_COLORS, MTA_LETTERS, MTA_LETTER_COLOR, TFL_LINES, TFL_BLUE, TFL_RED, FLAP_COLORS, NYC_TO_FLAP, flapCode };
   DB.minutesBetween = minutesBetween;
 })(window.DB);

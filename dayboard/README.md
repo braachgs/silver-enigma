@@ -3,24 +3,43 @@
 Your calendar as a subway departure board. Events are trains, calendars are
 lines, and the board counts down to what's next. It's a rebuild of
 [Day Board by @rillotv](https://day-board.kit.com/waitlist) (an unreleased
-iPhone app), with one big addition: **you pick the subway system the board is
-designed after.**
+iPhone app), with one big addition: **you pick the board style**. Two subway
+systems, plus a mechanical split-flap station board.
 
-| | New York City Subway | London Underground |
-|---|---|---|
-| Type | Helvetica Neue (Inter fallback) | Johnston-style: P22 Underground / Gill Sans if installed, else Cabin |
-| Line badge | Route bullet: circle, or diamond for all-day | Tube line colour tab (VIC, CEN…), hollow for all-day |
-| Board | Black station-sign header with white rule, cream board, yellow live row | TfL blue header with red rule, white board, blue live row |
-| Countdowns | `18 MIN`, `1:58 HR`, `NOW ARRIVING` | `18 MINS`, `Due` |
-| Line status | Good service / Delays | Good service / Minor delays / Severe delays |
-| Day map | Strip map with white stop circles | Beck-style diagram with ticks and interchange rings |
-| Platform display | Day Board widget look: yellow LED type, green LIVE | Amber dot-matrix indicator with "Mind the gap" ticker |
-| Clock and dates | 12-hour, `Tuesday, Oct 13` | 24-hour, `Tuesday 13 October` |
-| Announcements | "Stand clear of the closing doors, please." | "Please mind the gap between the train and the platform." |
+| | New York City Subway | London Underground | Split-Flap Departures |
+|---|---|---|---|
+| Type | Helvetica Neue (Inter fallback) | Johnston-style: P22 Underground / Gill Sans if installed, else Cabin | Barlow Condensed on flap cells |
+| Line badge | Route bullet: circle, or diamond for all-day | Tube line colour tab (VIC, CEN…), hollow for all-day | Coloured flap tile with a 3-letter code (WRK, PRS…), hollow for all-day |
+| Board | Black station-sign header with white rule, cream board, yellow live row | TfL blue header with red rule, white board, blue live row | Dark station board, amber rule, flap rows |
+| Time column | Countdowns: `18 MIN`, `1:58 HR`, `NOW ARRIVING` | Countdowns: `18 MINS`, `Due` | Scheduled time plus remarks: `10:30A · ON TIME / BOARDING / FINAL CALL / NOW / DEPARTED` |
+| Line status | Good service / Delays | Good service / Minor delays / Severe delays | On time / Delayed |
+| Day map | Strip map with white stop circles | Beck-style diagram with ticks and interchange rings | Route map with stop circles |
+| Platform display | Day Board widget look: yellow LED type, green LIVE | Amber dot-matrix indicator with "Mind the gap" ticker | Full Solari-style board: flaps cascade when the board advances, optional clatter |
+| Clock and dates | 12-hour, `Tuesday, Oct 13` | 24-hour, `Tuesday 13 October` | 12-hour, `10:30A` board times |
+| Announcements | "Stand clear of the closing doors, please." | "Please mind the gap between the train and the platform." | "Now boarding… All aboard." |
 
-A line's look is stored per system, so the Work line can be the **A** in New
-York and the **Victoria** line in London. Switching systems restyles
-everything without losing your choices.
+A line's look is stored per style, so the Work line can be the **A** in New
+York, the **Victoria** line in London and **WRK** on the flap board.
+Switching styles restyles everything without losing your choices.
+
+### Why the split-flap board shows times, not countdowns
+
+Mainline departure boards list the scheduled time and a remark, not a minute
+countdown. Day Board's flap style does the same, so a row only changes at
+event boundaries:
+
+| Remark | When |
+|---|---|
+| ON TIME | more than 15 minutes out |
+| BOARDING | 15 minutes or less |
+| FINAL CALL | 2 minutes or less |
+| NOW (green flaps) | in progress, with minutes left and a progress bar below |
+| DEPARTED | finished |
+
+Changed characters flip, cascading left to right. On the platform display the
+rows are fixed slots like a real board: when an event departs, every row below
+flips up to the next one. Opening the display flips the whole board in from
+blank. The flap sound is off by default (Settings → Board → Flap sound).
 
 ## Features
 
@@ -134,7 +153,7 @@ Everything lives in your browser's localStorage: your lines, events you saved
 short-lived access tokens. Day Board only talks to Google's servers. Settings
 → Reset Day Board wipes it.
 
-## Add another subway system
+## Add another board style
 
 Each system is one object in `js/systems.js` (`DB.SYSTEMS`) with the same
 shape as `nyc` and `london`:
@@ -143,6 +162,8 @@ shape as `nyc` and `london`:
 - `countdown(mins, live)`, `dateLong`, `time` and the other formatters
 - `copy`: board wording and announcements
 - `map`: track width, and stop style (`circle` or `tick`)
+- `layout: 'flap'` (optional): render rows and the platform display with flap
+  cells; such a system also provides `remark(event, now)` and `boardTime(t)`
 
 Then:
 
@@ -161,14 +182,15 @@ index.html             app shell
 config.js              optional Google client ID
 css/app.css            layout + per-system design tokens
 js/util.js             DOM + date helpers (text-only rendering)
-js/systems.js          NYC + London design systems
+js/systems.js          NYC, London and split-flap board styles
+js/flap.js             split-flap cells and flip animation
 js/store.js            state, line routing, Google cache (localStorage)
 js/google.js           Google Identity Services + Calendar API, multi-account
 js/sample.js           the sample day
 js/app.js              Board, Lines, Add, sheets, display, announcements, sync
 sw.js                  offline app shell
 manifest.webmanifest   install metadata
-fonts/                 Inter, Cabin, VT323, Doto (SIL OFL 1.1, licences included)
+fonts/                 Inter, Cabin, VT323, Doto, Barlow Condensed (SIL OFL 1.1, licences included)
 icons/                 app icons
 ```
 
