@@ -44,9 +44,14 @@ blank. The flap sound is off by default (Settings → Board → Flap sound).
 ## Features
 
 - **Board**: live events first with a progress bar and minutes left, then
-  departures with countdowns. Swipe or use the arrow keys to change day, and
-  tap the date for a month picker. Tap a line bullet to filter to it, and tap
-  the ◆ pill for all-day events.
+  departures with countdowns. Tap the date for a month picker. Tap a line
+  bullet to filter to it, and tap the ◆ pill for all-day events.
+- **Change day by swiping** anywhere on the Board or Lines tab: left for the
+  next day, right for the previous one. The day follows your finger. A long
+  or quick swipe moves a day, and a short one springs back. Subway boards
+  slide; the split-flap board flips the next day in. Swipes that start at
+  the very edge of the screen are left to Android's back gesture. On a
+  computer, use the ← → keys (`t` for today).
 - **Lines**: your categories with today's count and a service status (two
   overlapping events = delays), plus a map of your day.
 - **Add**: name, all day, start, duration, line, which calendar to save to,
@@ -150,7 +155,8 @@ line choices). If you untick the second, the account works read-only.
 
 `tests/run.sh` serves the repo on 127.0.0.1:8765 and runs the Playwright suites:
 visual tour, local events, a mocked multi-account Google flow, the split-flap
-style, and the review regressions. Screenshots land in `tests/out/`.
+style, the review regressions, and day swipes (real touch input through
+Chrome's input pipeline). Screenshots land in `tests/out/`.
 
 ## More
 

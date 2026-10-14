@@ -15,9 +15,12 @@ session. The conversation that built it isn't needed.
   Claude account that created it:
   https://claude.ai/artifact/3KQVfAWr3CknFvRueaEnKY. Another Claude account
   can't update that link; it would publish its own.
-- **Not set up yet:** GitHub Pages (`https://braachgs.github.io/silver-enigma/dayboard/`
-  once enabled from the branch, root folder) and a Google OAuth client ID (see
-  README.md). Both are needed for real Google Calendar sync.
+- **Live app:** GitHub Pages serves this branch at
+  `https://braachgs.github.io/silver-enigma/dayboard/`, and the owner runs it
+  on an Android phone. An OAuth client exists. The last error seen was "Google
+  Calendar API has not been used in project 278695224344", fixed by enabling
+  the Calendar API in that Cloud project. Real sync hasn't been confirmed
+  working yet.
 
 ## What exists
 
@@ -44,10 +47,10 @@ styles), `js/flap.js` (flap engine), `js/store.js` (state, line routing),
 
 ## How to test
 
-`dayboard/tests/run.sh` serves the repo on 127.0.0.1:8765 and runs five
+`dayboard/tests/run.sh` serves the repo on 127.0.0.1:8765 and runs six
 Playwright suites (visual tour, local events, mocked multi-account Google,
-split-flap, review fixes). Screenshots go to `tests/out/`. Google is mocked;
-nothing has run against real Google yet.
+split-flap, review fixes, day swipes). Screenshots go to `tests/out/`. Google
+is mocked in the suites.
 
 `config.js` has `preview: false` by default. The claude.ai preview build sets
 `preview: true`, hides Google sign-in, and gets its fonts inlined as data
@@ -62,8 +65,9 @@ without its `<html>/<head>/<body>` wrapper.
    `docs/android-widget-decision.md`. Answer the work-profile question first.
 2. **Merge to the default branch?** Do this so the repo front page shows Day
    Board and Pages can deploy from the default branch.
-3. **GitHub Pages and an OAuth client:** needed for real Google sync. Steps
-   are in README.md.
+3. **Google sync:** Pages and the OAuth client are set up. Confirm that
+   adding each account works and that events appear (README.md has the
+   steps).
 
 ## Known limitations
 

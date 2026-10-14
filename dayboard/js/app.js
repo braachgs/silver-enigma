@@ -147,7 +147,12 @@
   }
 
   // ------------------------------------------------------------- render
+  let holdUntil = 0; // a day swipe owns the screen until then (see initSwipe)
+  let missedRender = false;
+
   function render() {
+    if (Date.now() < holdUntil) { missedRender = true; return; }
+    missedRender = false;
     const S = sys();
     document.documentElement.dataset.system = S.id;
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -208,6 +213,25 @@
     ui.picker = false;
     render();
     sync(false);
+  }
+
+  const reduceMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const panes = () => [...view.querySelectorAll('.swipe-pane')];
+
+  // Step one day with the board's own transition: split-flap rows flip in
+  // from blank, and subway boards slide in from the side the day came from.
+  function shiftDay(step) {
+    holdUntil = 0;
+    const flapIn = ui.tab === 'board' && sys().layout === 'flap';
+    if (flapIn) DB.flap.prime('board');
+    goDate(addDays(ui.date, step));
+    if (flapIn || reduceMotion()) return;
+    for (const p of panes()) {
+      if (p.animate) {
+        p.animate([{ transform: `translateX(${step * 24}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+          { duration: 220, easing: 'cubic-bezier(.2, .7, .2, 1)' });
+      }
+    }
   }
 
   function chromeTop() {
@@ -410,7 +434,7 @@
     const header = boardHeader(evs);
     if (ui.filter) evs = evs.filter((e) => e.lineObj.id === ui.filter);
     const timed = evs.filter((e) => !e.allDay).sort(byStart);
-    const list = h('section', { class: 'board', 'aria-label': S.copy.departures });
+    const list = h('section', { class: 'board swipe-pane', 'aria-label': S.copy.departures });
 
     if (!timed.length) {
       list.append(emptyState(S.copy.empty, evs.length ? 'Only all-day events on this day.' : S.copy.emptySub));
@@ -438,26 +462,106 @@
     // Let a flip cascade finish before the clock-driven redraw replaces it.
     if (DB.flap.takeFlips('board')) flapBusyUntil = Date.now() + 1800;
 
-    const wrap = h('div', { class: 'board-view' }, header, list);
-    attachSwipe(wrap);
-    return wrap;
+    return h('div', { class: 'board-view' }, header, list);
   }
 
-  function attachSwipe(el) {
-    let x0 = null;
-    let y0 = 0;
-    el.addEventListener('touchstart', (e) => {
-      if (e.target.closest('.picker')) return;
-      x0 = e.touches[0].clientX;
-      y0 = e.touches[0].clientY;
+  // Swipe anywhere on the Board or Lines tab to change day: left for the next
+  // day, right for the previous one. The day follows your finger; a long or
+  // quick swipe moves a day and a short one springs back. Vertical scrolling
+  // stays with the browser (touch-action: pan-y on #app), and swipes that
+  // start at the screen edge are left to Android's back gesture.
+  function initSwipe(root) {
+    const EDGE = 24;
+    let g = null; // the gesture in progress
+    let noClickUntil = 0;
+
+    const width = () => view.clientWidth || window.innerWidth;
+    const flushLater = (ms) => setTimeout(() => { if (missedRender && Date.now() >= holdUntil) render(); }, ms);
+
+    function follow(dx) {
+      if (reduceMotion()) return;
+      const fade = String(1 - Math.min(0.5, (Math.abs(dx) / width()) * 0.6));
+      for (const p of panes()) {
+        p.style.transform = `translateX(${dx}px)`;
+        p.style.opacity = fade;
+      }
+    }
+
+    function springBack() {
+      for (const p of panes()) {
+        const from = { transform: p.style.transform || 'none', opacity: p.style.opacity || '1' };
+        p.style.transform = '';
+        p.style.opacity = '';
+        if (p.animate && !reduceMotion()) p.animate([from, { transform: 'none', opacity: 1 }], { duration: 180, easing: 'ease-out' });
+      }
+      holdUntil = Date.now() + 200;
+      flushLater(220);
+    }
+
+    function finish(dx, v) {
+      noClickUntil = Date.now() + 400;
+      const far = Math.abs(dx) > Math.min(100, width() * 0.25);
+      const flick = Math.abs(dx) > 40 && Math.abs(v) > 0.35 && Math.sign(v) === Math.sign(dx);
+      if (!far && !flick) { springBack(); return; }
+      const step = dx < 0 ? 1 : -1;
+      // Flap boards don't slide: the new day flips in where the board stands.
+      if (reduceMotion() || (ui.tab === 'board' && sys().layout === 'flap')) { shiftDay(step); return; }
+      holdUntil = Date.now() + 600;
+      const out = panes().filter((p) => p.animate).map((p) => p.animate([
+        { transform: p.style.transform || 'none', opacity: p.style.opacity || '1' },
+        { transform: `translateX(${-step * width()}px)`, opacity: 0 },
+      ], { duration: 140, easing: 'ease-in', fill: 'forwards' }).finished);
+      Promise.all(out).catch(() => {}).then(() => shiftDay(step));
+    }
+
+    root.addEventListener('touchstart', (e) => {
+      g = null;
+      if (e.touches.length !== 1 || ui.tab === 'add' || dialog.open || !displayEl.hidden) return;
+      if (e.target.closest('input, textarea, select, .picker')) return;
+      const t = e.touches[0];
+      if (t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
+      g = { x0: t.clientX, y0: t.clientY, x: t.clientX, t: e.timeStamp, dx: 0, v: 0, axis: null };
     }, { passive: true });
-    el.addEventListener('touchend', (e) => {
-      if (x0 == null) return;
-      const dx = e.changedTouches[0].clientX - x0;
-      const dy = e.changedTouches[0].clientY - y0;
-      x0 = null;
-      if (Math.abs(dx) > 70 && Math.abs(dy) < 50) goDate(addDays(ui.date, dx < 0 ? 1 : -1));
+
+    // Not passive: once a drag is horizontal, it mustn't also scroll the page.
+    root.addEventListener('touchmove', (e) => {
+      if (!g) return;
+      if (e.touches.length !== 1) { // a second finger: give the gesture back (pinch zoom)
+        if (g.axis === 'x') springBack();
+        g = null;
+        return;
+      }
+      const t = e.touches[0];
+      const dx = t.clientX - g.x0;
+      const dy = t.clientY - g.y0;
+      if (!g.axis) {
+        if (Math.hypot(dx, dy) < 10) return;
+        g.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      }
+      if (g.axis !== 'x') return;
+      if (e.cancelable) e.preventDefault();
+      const dt = e.timeStamp - g.t;
+      if (dt > 0) g.v = 0.8 * ((t.clientX - g.x) / dt) + 0.2 * g.v;
+      g.x = t.clientX;
+      g.t = e.timeStamp;
+      g.dx = dx;
+      holdUntil = Date.now() + 1500; // keep clock redraws off the panes mid-drag
+      follow(dx);
+    }, { passive: false });
+
+    root.addEventListener('touchend', () => {
+      if (g && g.axis === 'x') finish(g.dx, g.v);
+      g = null;
     }, { passive: true });
+    root.addEventListener('touchcancel', () => {
+      if (g && g.axis === 'x') springBack();
+      g = null;
+    }, { passive: true });
+
+    // A drag that began on an event row must not also open that event.
+    root.addEventListener('click', (e) => {
+      if (Date.now() < noClickUntil) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
   }
 
   // -------------------------------------------------------------- lines
@@ -474,9 +578,9 @@
         h('div', { class: 'hdr-title' },
           h('h1', {}, S.copy.linesTitle),
           h('div', { class: 'hdr-sub' },
-            h('button', { class: 'icon-btn xs', 'aria-label': 'Previous day', onclick: () => goDate(addDays(ui.date, -1)) }, icon('left', 14)),
+            h('button', { class: 'icon-btn xs', 'aria-label': 'Previous day', onclick: () => shiftDay(-1) }, icon('left', 14)),
             h('span', {}, S.dateShort(dayStart(ui.date))),
-            h('button', { class: 'icon-btn xs', 'aria-label': 'Next day', onclick: () => goDate(addDays(ui.date, 1)) }, icon('right', 14)))),
+            h('button', { class: 'icon-btn xs', 'aria-label': 'Next day', onclick: () => shiftDay(1) }, icon('right', 14)))),
         headerActions(null)));
 
     const list = h('ul', { class: 'line-list' }, store.state.lines.map((l) => {
@@ -493,9 +597,9 @@
     }));
 
     return h('div', { class: 'lines-view' }, header,
-      h('div', { class: 'lines-body' }, list,
+      h('div', { class: 'lines-body swipe-pane' }, list,
         h('button', { class: 'btn-outline wide', onclick: () => openLineEditor(null) }, S.copy.addLine)),
-      h('section', { class: 'map-section' },
+      h('section', { class: 'map-section swipe-pane' },
         h('h2', { class: 'section-title' }, S.copy.mapTitle),
         stripMap(evs)));
   }
@@ -1450,10 +1554,11 @@
       if (e.key === 'Escape' && !displayEl.hidden) { closeDisplay(); return; }
       if (dialog.open || !displayEl.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) return;
       if (ui.tab === 'add') return;
-      if (e.key === 'ArrowLeft') goDate(addDays(ui.date, -1));
-      else if (e.key === 'ArrowRight') goDate(addDays(ui.date, 1));
+      if (e.key === 'ArrowLeft') shiftDay(-1);
+      else if (e.key === 'ArrowRight') shiftDay(1);
       else if (e.key === 't') goDate(todayKey());
     });
+    initSwipe(document.getElementById('app'));
     let resizeTimer = null;
     let lastWidth = window.innerWidth;
     window.addEventListener('resize', () => {

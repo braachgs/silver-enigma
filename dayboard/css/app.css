@@ -178,6 +178,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--board);
   box-shadow: 0 0 60px rgba(0, 0, 0, .28);
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  /* Day swipes: the browser keeps vertical scrolling and pinch zoom, the app
+     takes horizontal drags, and a day sliding out is clipped to the column. */
+  touch-action: pan-y pinch-zoom;
+  overflow-x: clip;
 }
 
 /* ------------------------------------------------------------- banner */
