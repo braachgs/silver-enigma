@@ -265,15 +265,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .icon-btn.sm { width: 34px; height: 34px; }
 .icon-btn.xs { width: 24px; height: 24px; border: 0; background: transparent; color: var(--chrome-dim); }
-.chip-btn {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 16px;
-  border: 1px solid var(--chrome-line);
-  background: transparent;
-  color: var(--chrome-ink);
-  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+/* Which day is on screen, in words: TODAY in the accent colour, otherwise
+   TOMORROW, 3 DAYS AGO… in the dim chrome colour. */
+.hdr-day { flex: 1; min-width: 0; }
+.hdr-day .date-btn { width: 100%; }
+.hdr-kicker {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--chrome-dim);
 }
+.hdr-kicker.is-today { color: var(--accent); }
+.hdr-sub .hdr-kicker { display: inline; margin: 0; font-size: inherit; letter-spacing: inherit; }
+.today-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 32px;
+  margin-top: 10px;
+  padding: 0 14px 0 10px;
+  border: 0; border-radius: 16px;
+  background: var(--accent);
+  color: var(--chrome);
+  font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.today-btn:has(> .icon:last-child) { padding: 0 10px 0 14px; }
+[data-system="nyc"] .today-btn { color: #111; }
 
 .hdr-lines {
   display: flex;
@@ -336,7 +352,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: none; color: inherit;
   font-size: 15px; font-weight: 600;
 }
-.pk-day.today { box-shadow: inset 0 0 0 1.5px var(--chrome-line); }
+.pk-day.today { box-shadow: inset 0 0 0 2px var(--accent); }
 .pk-day.sel { background: var(--accent); color: var(--chrome); }
 [data-system="nyc"] .pk-day.sel { color: #111; }
 .pk-dots { display: flex; gap: 2px; height: 5px; }
@@ -607,6 +623,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .field.col { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; }
 .field > label { font-size: 15px; color: var(--ink-2); }
+.rel-cap { display: block; margin-top: 2px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
 .field input:not([type="checkbox"]), .field select, .field textarea {
   min-width: 0;
   border: 0;

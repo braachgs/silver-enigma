@@ -150,9 +150,13 @@
   let holdUntil = 0; // a day swipe owns the screen until then (see initSwipe)
   let missedRender = false;
 
+  let shownDate = ui.date; // the day the screen last showed (renders can be held)
+
   function render() {
     if (Date.now() < holdUntil) { missedRender = true; return; }
     missedRender = false;
+    rollover();
+    shownDate = ui.date;
     const S = sys();
     document.documentElement.dataset.system = S.id;
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -218,20 +222,56 @@
   const reduceMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const panes = () => [...view.querySelectorAll('.swipe-pane')];
 
-  // Step one day with the board's own transition: split-flap rows flip in
+  // Move to day k with the board's own transition: split-flap rows flip in
   // from blank, and subway boards slide in from the side the day came from.
-  function shiftDay(step) {
+  function moveTo(k, dir) {
     holdUntil = 0;
     const flapIn = ui.tab === 'board' && sys().layout === 'flap';
     if (flapIn) DB.flap.prime('board');
-    goDate(addDays(ui.date, step));
-    if (flapIn || reduceMotion()) return;
+    goDate(k);
+    if (flapIn || reduceMotion() || !dir) return;
     for (const p of panes()) {
       if (p.animate) {
-        p.animate([{ transform: `translateX(${step * 24}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+        p.animate([{ transform: `translateX(${dir * 24}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
           { duration: 220, easing: 'cubic-bezier(.2, .7, .2, 1)' });
       }
     }
+  }
+  // One day on from the day on screen. While a swipe holds rendering, the
+  // midnight rollover may already have moved ui.date past what you can see.
+  const shiftDay = (step) => moveTo(addDays(shownDate, step), step);
+
+  // Whole days from a to b, counted on day keys so a 23- or 25-hour
+  // clock-change day still counts as one.
+  const daysBetween = (a, b) => Math.round((U.parseKey(b) - U.parseKey(a)) / 86400000);
+
+  // "today", "tomorrow", "yesterday", "in 3 days", "2 days ago".
+  function relDay(k) {
+    const n = daysBetween(todayKey(), k);
+    try {
+      return new Intl.RelativeTimeFormat(sys().locale, { numeric: 'auto' }).format(n, 'day');
+    } catch (_) {
+      return n === 0 ? 'today' : n === 1 ? 'tomorrow' : n === -1 ? 'yesterday' : n > 0 ? `in ${n} days` : `${-n} days ago`;
+    }
+  }
+
+  // Which day is on screen, said in words above the date: TODAY on today,
+  // TOMORROW, 3 DAYS AGO and so on otherwise. The word "today" only ever
+  // appears next to the day that really is today.
+  function dayKicker() {
+    return h('span', { class: `hdr-kicker${ui.date === todayKey() ? ' is-today' : ''}` }, relDay(ui.date));
+  }
+
+  // On any other day, a jump back to today on its own row under the date, so
+  // it reads as an action rather than as a tag on the date.
+  function backToToday() {
+    const today = todayKey();
+    if (ui.date === today) return null;
+    const ahead = ui.date > today;
+    return h('button', {
+      class: 'today-btn', 'aria-label': `Back to today, ${sys().dateLong(dayStart(today))}`,
+      onclick: () => moveTo(today, ahead ? -1 : 1),
+    }, ahead ? icon('left', 14) : null, h('span', {}, 'Back to today'), ahead ? null : icon('right', 14));
   }
 
   function chromeTop() {
@@ -262,14 +302,15 @@
       chromeTop(),
       h('div', { class: 'hdr' },
         S.logo ? h('span', { class: 'hdr-logo' }, S.logo(40)) : null,
-        h('button', {
-          class: 'date-btn', 'aria-expanded': String(ui.picker), 'aria-label': `${S.dateLong(dayStart(ui.date))}, choose date`,
-          onclick: () => { ui.picker = !ui.picker; ui.pickerMonth = ui.date; render(); },
-        }, h('span', { class: 'date-text' }, S.dateLong(dayStart(ui.date))), h('span', { class: 'chev' }, icon('chevron', 22))),
-        headerActions([
-          !isToday ? h('button', { class: 'chip-btn', onclick: () => goDate(todayKey()) }, 'Today') : null,
-          h('button', { class: 'icon-btn', 'aria-label': 'Platform display', onclick: openDisplay }, icon('display', 20)),
-        ])),
+        h('div', { class: 'hdr-day' },
+          dayKicker(),
+          h('button', {
+            class: 'date-btn', 'aria-expanded': String(ui.picker),
+            'aria-label': `${S.dateLong(dayStart(ui.date))}, ${relDay(ui.date)}, choose date`,
+            onclick: () => { ui.picker = !ui.picker; ui.pickerMonth = ui.date; render(); },
+          }, h('span', { class: 'date-text' }, S.dateLong(dayStart(ui.date))), h('span', { class: 'chev' }, icon('chevron', 22))),
+          backToToday()),
+        headerActions(h('button', { class: 'icon-btn', 'aria-label': 'Platform display', onclick: openDisplay }, icon('display', 20)))),
       ui.picker ? datePicker() : null,
       badges.length || allDay.length
         ? h('div', { class: 'hdr-lines' }, badges,
@@ -324,7 +365,8 @@
       const ds = [...(dots.get(k) || [])].slice(0, 3);
       cells.push(h('button', {
         class: `pk-day${k === today ? ' today' : ''}${k === ui.date ? ' sel' : ''}`,
-        'aria-label': S.dateLong(dayStart(k)), 'aria-current': k === ui.date ? 'date' : null,
+        'aria-label': k === today ? `${S.dateLong(dayStart(k))}, today` : S.dateLong(dayStart(k)),
+        'aria-current': k === ui.date ? 'date' : null,
         onclick: () => goDate(k),
       }, h('span', {}, String(d)), h('span', { class: 'pk-dots' }, ds.map((c) => h('i', { style: { background: c } })))));
     }
@@ -378,7 +420,8 @@
     const F = DB.flap;
     const width = flapCells();
     const time = S.boardTime(e.start, h12());
-    const rk = S.remark(e, now);
+    // Another day's board isn't live: its departures are SCHEDULED, not ON TIME.
+    const rk = e.start > now && ui.date > todayKey() ? { text: S.copy.scheduled, tone: 'info' } : S.remark(e, now);
     const dur = Math.max(0, Math.round((e.end - e.start) / 60000));
     const sub = [e.location, live ? `${durText(mins(now, e.end))} left` : dur ? durText(dur) : null].filter(Boolean).join(' · ');
     const progress = live ? Math.min(1, Math.max(0, (now - e.start) / Math.max(1, e.end - e.start))) : null;
@@ -579,8 +622,9 @@
           h('h1', {}, S.copy.linesTitle),
           h('div', { class: 'hdr-sub' },
             h('button', { class: 'icon-btn xs', 'aria-label': 'Previous day', onclick: () => shiftDay(-1) }, icon('left', 14)),
-            h('span', {}, S.dateShort(dayStart(ui.date))),
-            h('button', { class: 'icon-btn xs', 'aria-label': 'Next day', onclick: () => shiftDay(1) }, icon('right', 14)))),
+            h('span', {}, dayKicker(), ` · ${S.dateShort(dayStart(ui.date))}`),
+            h('button', { class: 'icon-btn xs', 'aria-label': 'Next day', onclick: () => shiftDay(1) }, icon('right', 14))),
+          backToToday()),
         headerActions(null)));
 
     const list = h('ul', { class: 'line-list' }, store.state.lines.map((l) => {
@@ -720,10 +764,13 @@
   function defaultStart() {
     const now = Date.now();
     if (ui.date === todayKey()) {
-      const step = 30 * 60000;
-      return Math.ceil((now + 60000) / step) * step;
+      const next = (step) => Math.ceil((now + 60000) / step) * step;
+      const t = next(30 * 60000);
+      if (t < dayEnd(ui.date)) return t;
+      // Late at night the next half hour is tomorrow: stay on today.
+      return Math.min(next(5 * 60000), U.fromInputs(ui.date, '23:55'));
     }
-    return dayStart(ui.date) + 9 * 3600000;
+    return U.fromInputs(ui.date, '09:00'); // wall-clock 09:00, also on clock-change days
   }
 
   function addView() {
@@ -775,12 +822,20 @@
     const notes = h('textarea', { id: 'f-notes', rows: 3, placeholder: 'Notes' });
     notes.value = editing ? editing.notes : '';
 
-    const timeRow = h('div', { class: 'field' }, h('label', { for: 'f-date' }, 'Starts'), h('span', { class: 'field-pair' }, date, time));
+    // "Starts" with "tomorrow" (or "today", "in 3 days") under it, so the
+    // form says which day the event will land on.
+    const timeLabel = h('span', {}, 'Starts');
+    const relCap = h('small', { class: 'rel-cap' });
+    const paintRel = () => { relCap.textContent = /^\d{4}-\d{2}-\d{2}$/.test(date.value) ? relDay(date.value) : ''; };
+    date.addEventListener('input', paintRel);
+    date.addEventListener('change', paintRel);
+    paintRel();
+    const timeRow = h('div', { class: 'field' }, h('label', { for: 'f-date' }, timeLabel, relCap), h('span', { class: 'field-pair' }, date, time));
     const durRow = h('div', { class: 'field' }, h('label', { for: 'f-dur' }, 'Duration'), durSel);
     const syncAllDay = () => {
       time.hidden = allDay.checked;
       durRow.hidden = allDay.checked;
-      timeRow.querySelector('label').textContent = allDay.checked ? 'Date' : 'Starts';
+      timeLabel.textContent = allDay.checked ? 'Date' : 'Starts';
     };
     allDay.addEventListener('change', syncAllDay);
     syncAllDay();
@@ -799,10 +854,16 @@
       }
       if (!date.value) { date.focus(); return; }
       const isAllDay = allDay.checked;
-      const s0 = isAllDay ? dayStart(date.value) : U.fromInputs(date.value, time.value || '09:00');
+      // An untouched date and time keep the stored instant: re-reading them
+      // would move an event in the repeated hour of a clock-change night.
+      const sameStart = editing && !editing.allDay && !isAllDay
+        && date.value === dateKey(editing.start) && time.value === U.timeValue(editing.start);
+      const s0 = isAllDay ? dayStart(date.value) : sameStart ? editing.start : U.fromInputs(date.value, time.value || '09:00');
+      // A multi-day all-day event keeps its length; the form has one date field.
+      const span = editing && editing.allDay && isAllDay ? Math.max(1, daysBetween(dateKey(editing.start), dateKey(editing.end))) : 1;
       const data = {
         title: t, allDay: isAllDay, start: s0,
-        end: isAllDay ? dayStart(addDays(date.value, 1)) : s0 + Number(durSel.value) * 60000,
+        end: isAllDay ? dayStart(addDays(date.value, span)) : s0 + Number(durSel.value) * 60000,
         location: loc.value.trim(), notes: notes.value.trim(), line: lineSel.value,
       };
       const label = submitBtn.textContent;
@@ -812,7 +873,8 @@
         if (editing) await saveEdit(editing, data);
         else await saveNew(destSel.value, data);
         if (!editing) store.set('lastDest', destSel.value);
-        toast(editing ? 'Event updated' : 'Added to the board');
+        toast(editing ? 'Event updated'
+          : date.value === todayKey() ? 'Added to the board' : `Added to ${S.dateLong(dayStart(date.value))}`);
         ui.editKey = null;
         ui.tab = 'board';
         goDate(date.value);
@@ -870,6 +932,12 @@
       const patch = { ...data };
       if (data.notes === e.notes) delete patch.notes; // keep Google's rich-text description intact
       if (data.location === e.location) delete patch.location;
+      // Unchanged times stay off the PATCH, so Google keeps the event's own
+      // dates and time zone exactly as they were.
+      if (data.allDay === e.allDay && data.start === e.start && data.end === e.end) {
+        delete patch.start;
+        delete patch.end;
+      }
       await DB.google.updateEvent(e, patch);
       store.setOverride(e.key, data.line);
     }
@@ -1521,17 +1589,25 @@
   let lastToday = todayKey();
   let lastSyncCheck = 0;
 
+  // Midnight: a board showing today moves on to the new today. Runs on every
+  // tick and at the top of every render, so a phone that slept through
+  // midnight never draws yesterday as today when it wakes.
+  function rollover() {
+    const tk = todayKey();
+    if (tk === lastToday) return false;
+    if (ui.date === lastToday) ui.date = tk;
+    lastToday = tk;
+    ui.sampleAnchor = Date.now();
+    sampleCache = null;
+    flapBusyUntil = 0; // don't hold the new day behind yesterday's flip cascade
+    return true;
+  }
+
   function tick() {
     const now = Date.now();
-    const tk = todayKey();
-    if (tk !== lastToday) {
-      if (ui.date === lastToday) ui.date = tk;
-      lastToday = tk;
-      ui.sampleAnchor = now;
-      sampleCache = null;
-    }
+    const rolled = rollover();
     const minute = Math.floor(now / 60000);
-    if (ui.tab !== 'add' && now >= flapBusyUntil && (minute !== lastMinute || now - lastFull > 20000)) {
+    if (ui.tab !== 'add' && (rolled || (now >= flapBusyUntil && (minute !== lastMinute || now - lastFull > 20000)))) {
       lastMinute = minute;
       lastFull = now;
       render();
@@ -1571,8 +1647,22 @@
         if (!displayEl.hidden) { displaySig = ''; renderDisplay(); }
       }, 150);
     });
+    // Back after a while away (timers don't run while Android has the app in
+    // the background): show today again rather than the day you'd browsed to.
+    const AWAY_RESET = 15 * 60000;
+    let hiddenAt = 0;
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) { render(); sync(false); }
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      rollover();
+      if (hiddenAt && Date.now() - hiddenAt >= AWAY_RESET && ui.date !== todayKey()) {
+        ui.date = todayKey();
+        ui.filter = null;
+        ui.allDayOpen = false;
+        ui.picker = false;
+      }
+      hiddenAt = 0;
+      render();
+      sync(false);
     });
 
     const route = location.hash.replace('#', '');

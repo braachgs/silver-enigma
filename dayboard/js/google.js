@@ -246,11 +246,16 @@
     };
     if (!patch || d.location != null) b.location = d.location || '';
     if (!patch || d.notes != null) b.description = d.notes || '';
+    if (patch && d.start == null) return b; // times unchanged: leave them as Google has them
     if (d.allDay) {
       b.start = { date: dateKey(d.start), dateTime: patch ? null : undefined };
       b.end = { date: dateKey(d.end), dateTime: patch ? null : undefined };
     } else {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      // A new event gets this device's time zone. An edit leaves the event's
+      // own zone alone (PATCH merges into start/end): a New York family
+      // event edited in London stays a New York event. The UTC dateTime
+      // fixes the instant either way.
+      const tz = patch ? undefined : Intl.DateTimeFormat().resolvedOptions().timeZone;
       b.start = { dateTime: new Date(d.start).toISOString(), timeZone: tz, date: patch ? null : undefined };
       b.end = { dateTime: new Date(d.end).toISOString(), timeZone: tz, date: patch ? null : undefined };
     }

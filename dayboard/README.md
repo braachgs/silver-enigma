@@ -52,6 +52,12 @@ blank. The flap sound is off by default (Settings → Board → Flap sound).
   slide; the split-flap board flips the next day in. Swipes that start at
   the very edge of the screen are left to Android's back gesture. On a
   computer, use the ← → keys (`t` for today).
+- **Always clear which day you're on.** A label above the date says TODAY,
+  TOMORROW, YESTERDAY, IN 3 DAYS and so on. On any other day a **Back to
+  today** button sits under the date, and the split-flap board marks that
+  day's departures SCHEDULED rather than ON TIME. Come back to the app after
+  15 minutes or more away and it shows today again. A quick app switch keeps
+  the day you were on.
 - **Lines**: your categories with today's count and a service status (two
   overlapping events = delays), plus a map of your day.
 - **Add**: name, all day, start, duration, line, which calendar to save to,
@@ -155,8 +161,10 @@ line choices). If you untick the second, the account works read-only.
 
 `tests/run.sh` serves the repo on 127.0.0.1:8765 and runs the Playwright suites:
 visual tour, local events, a mocked multi-account Google flow, the split-flap
-style, the review regressions, and day swipes (real touch input through
-Chrome's input pipeline). Screenshots land in `tests/out/`.
+style, the review regressions, day swipes (real touch input through
+Chrome's input pipeline), and dates: a phone in London with New York and UTC
+calendars, across midnight and the October clock change. Screenshots land in
+`tests/out/`.
 
 ## More
 

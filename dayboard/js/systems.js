@@ -357,6 +357,7 @@
       departures: 'Time · Destination',
       timeCol: 'Remarks',
       timeColOther: 'Remarks',
+      scheduled: 'Scheduled', // remark on a future day's board
       arriving: 'Final call',
       liveTag: 'Now',
       allDay: (n) => `${n} all-day`,

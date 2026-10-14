@@ -47,10 +47,13 @@ styles), `js/flap.js` (flap engine), `js/store.js` (state, line routing),
 
 ## How to test
 
-`dayboard/tests/run.sh` serves the repo on 127.0.0.1:8765 and runs six
+`dayboard/tests/run.sh` serves the repo on 127.0.0.1:8765 and runs seven
 Playwright suites (visual tour, local events, mocked multi-account Google,
-split-flap, review fixes, day swipes). Screenshots go to `tests/out/`. Google
-is mocked in the suites.
+split-flap, review fixes, day swipes, dates). Screenshots go to `tests/out/`.
+Google is mocked in the suites. `dates-test.js` emulates the owner's setup: a
+Europe/London phone (BST until 25 Oct 2026) with calendars in New York and UTC.
+It uses Playwright's fake clock. Slide and flip animations run on real time, so
+wait in real time before measuring layout after a day change.
 
 `config.js` has `preview: false` by default. The claude.ai preview build sets
 `preview: true`, hides Google sign-in, and gets its fonts inlined as data

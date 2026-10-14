@@ -73,7 +73,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   const before = await p.textContent('.date-text');
   await p.keyboard.press('ArrowRight'); await p.waitForTimeout(150);
   assert(await p.textContent('.date-text') !== before, 'arrow key moves to next day');
-  assert(await p.$('.chip-btn:has-text("Today")'), 'Today chip appears off-today');
+  assert(await p.$('.today-btn:has-text("Back to today")'), 'Back to today appears off-today');
   console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'NO CONSOLE ERRORS');
   await b.close();
 })();

@@ -231,7 +231,14 @@
   }
   function putWindow(from, to, results) {
     for (const [calKey, events] of Object.entries(results)) {
-      const keep = (cache.cals[calKey] || []).filter((e) => e.end <= from || e.start >= to);
+      // Fresh copies replace old ones by id, wherever the old ones sat. Google
+      // judges an all-day event's end in its calendar's time zone, so a UTC
+      // or New York all-day event ending at London midnight comes back in
+      // the next window too, and an event moved on Google keeps its id while
+      // its old copy may sit outside the window; keeping both would duplicate
+      // or ghost it.
+      const fresh = new Set(events.map((e) => e.id));
+      const keep = (cache.cals[calKey] || []).filter((e) => !fresh.has(e.id) && (e.end <= from || e.start >= to));
       cache.cals[calKey] = keep.concat(events);
     }
     cache.fetched = { from, to, at: Date.now() };

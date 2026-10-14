@@ -27,6 +27,10 @@
     const lineFor = (name, i) => (lines.find((l) => l.name.toLowerCase() === name.toLowerCase()) || lines[i % lines.length]).id;
     const t0 = Math.floor(now / 60000) * 60000;
     const london = systemId === 'london';
+    const today = todayKey();
+    // Only items that fit inside today: opened in the evening, the later ones
+    // would otherwise spill past midnight onto tomorrow's board.
+    const inToday = (e) => e.start >= dayStart(today) && e.end <= dayStart(addDays(today, 1));
     const out = TIMED.map(([title, line, nyc, ldn, inMin, dur], i) => ({
       key: `s|${i}`,
       source: 'sample',
@@ -38,8 +42,7 @@
       end: t0 + (inMin + dur) * 60000,
       line: lineFor(line, i),
       writable: false,
-    }));
-    const today = todayKey();
+    })).filter(inToday);
     ALL_DAY.forEach(([title, line, gbTitle], i) => out.push({
       key: `s|a${i}`,
       source: 'sample',
