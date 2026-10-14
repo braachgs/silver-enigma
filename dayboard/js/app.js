@@ -78,6 +78,27 @@
   }
 
   const safeHref = (u) => (u && /^https?:\/\//i.test(u) ? u : null);
+  // Preview hosts (e.g. an embedded viewer) can't load Google sign-in.
+  const isPreview = () => !!(window.DayBoardConfig || {}).preview;
+
+  // Two-tap confirmation for destructive buttons: works everywhere, unlike
+  // window.confirm, which some app views block.
+  function confirmTap(btn, prompt, action) {
+    if (btn.dataset.armed === '1') {
+      action();
+      return;
+    }
+    const label = btn.textContent;
+    btn.dataset.armed = '1';
+    btn.classList.add('armed');
+    btn.textContent = prompt;
+    setTimeout(() => {
+      if (!btn.isConnected) return;
+      btn.dataset.armed = '';
+      btn.classList.remove('armed');
+      btn.textContent = label;
+    }, 4000);
+  }
 
   function durText(m) {
     if (m < 60) return `${m} min`;
@@ -346,7 +367,10 @@
       h('span', { class: 'fr-top' },
         F.text(time, time.length, `${e.key}|t`, 'board', { cls: 'fl-time' }),
         F.text(rk.text, 10, `${e.key}|r`, 'board', { cls: `fl-remark tone-${rk.tone}`, delay: 120 })),
-      F.wrap(e.title, width, 2).map((line, i) => F.text(line, width, `${e.key}|d${i}`, 'board', { cls: 'fl-dest', delay: 60 + i * 80 })),
+      F.legible(e.title)
+        ? F.wrap(e.title, width, 2).map((line, i) => F.text(line, width, `${e.key}|d${i}`, 'board',
+          { cls: 'fl-dest', delay: 60 + i * 80, label: i === 0 ? e.title : '' }))
+        : h('span', { class: 'row-title fr-plain' }, e.title),
       sub ? h('span', { class: 'row-sub' }, sub) : null),
     progress != null ? h('span', { class: 'progress', 'aria-hidden': 'true' },
       h('i', { style: { width: `${(progress * 100).toFixed(1)}%` } })) : null);
@@ -361,6 +385,9 @@
 
   function boardFooter() {
     const st = store.state;
+    if (isPreview() && !st.accounts.length) {
+      return h('footer', { class: 'board-foot' }, h('span', {}, 'Preview · events you add stay in this browser'));
+    }
     if (!st.accounts.length) {
       return h('footer', { class: 'board-foot' },
         h('span', {}, 'Connect Google Calendar in '),
@@ -408,7 +435,8 @@
     }
     list.append(boardFooter());
     DB.flap.end('board');
-    DB.flap.takeFlips('board');
+    // Let a flip cascade finish before the clock-driven redraw replaces it.
+    if (DB.flap.takeFlips('board')) flapBusyUntil = Date.now() + 1800;
 
     const wrap = h('div', { class: 'board-view' }, header, list);
     attachSwipe(wrap);
@@ -716,7 +744,10 @@
           h('div', { class: 'field col' }, loc),
           h('div', { class: 'field col' }, notes)),
         submitBtn,
-        editing && editing.writable ? h('button', { type: 'button', class: 'btn-danger wide', onclick: () => confirmDelete(editing) }, 'Delete event') : null));
+        editing && editing.writable ? h('button', {
+          type: 'button', class: 'btn-danger wide',
+          onclick: (ev) => confirmTap(ev.currentTarget, 'Tap again to delete', () => deleteEvent(editing)),
+        }, 'Delete event') : null));
   }
 
   async function saveNew(dest, data) {
@@ -740,8 +771,7 @@
     }
   }
 
-  async function confirmDelete(e) {
-    if (!window.confirm(`Delete "${e.title}"?`)) return;
+  async function deleteEvent(e) {
     try {
       if (e.source === 'local') store.removeLocal(e.id);
       else if (e.source === 'google') await DB.google.deleteEvent(e);
@@ -778,7 +808,18 @@
     if (dialog.open) dialog.close();
   }
   dialog.addEventListener('click', (e) => { if (e.target === dialog) closeSheet(); });
-  dialog.addEventListener('close', () => { sheet = null; dialog.replaceChildren(); });
+  dialog.addEventListener('close', () => {
+    sheet = null;
+    dialog.replaceChildren();
+    // A board style switched to split-flap flips in once the sheet is out of the way.
+    if (ui.flapBoot) {
+      ui.flapBoot = false;
+      if (sys().layout === 'flap') {
+        DB.flap.prime('board');
+        render();
+      }
+    }
+  });
 
   function sheetShell(title, ...body) {
     return h('div', { class: 'sheet-inner' },
@@ -824,7 +865,10 @@
       h('p', { class: 'detail-source' }, source),
       e.writable ? h('div', { class: 'detail-actions' },
         h('button', { class: 'btn-outline', onclick: () => { closeSheet(); openEdit(e.key); } }, 'Edit'),
-        h('button', { class: 'btn-danger', onclick: () => confirmDelete(e) }, 'Delete')) : null);
+        h('button', {
+          class: 'btn-danger',
+          onclick: (ev) => confirmTap(ev.currentTarget, 'Tap again to delete', () => deleteEvent(e)),
+        }, 'Delete')) : null);
   }
 
   function changeLine(e, lineId) {
@@ -925,11 +969,10 @@
         }, existing ? 'Save line' : 'Add line'),
         existing && store.state.lines.length > 1 ? h('button', {
           type: 'button', class: 'btn-danger',
-          onclick: () => {
-            if (!window.confirm(`Delete the ${existing.name} line? Its events move to other lines.`)) return;
+          onclick: (ev) => confirmTap(ev.currentTarget, 'Tap again: events move to other lines', () => {
             store.removeLine(id);
             closeSheet();
-          },
+          }),
         }, 'Delete line') : null));
     paint();
     return sheetShell(existing ? 'Edit line' : 'New line', body);
@@ -957,7 +1000,7 @@
   }
 
   function sysPreview(x) {
-    const demo = store.state.lines.slice(0, 3);
+    const demo = store.state.lines.slice(0, x.logo ? 2 : 3);
     return h('span', { class: `sys-preview sys-${x.id}` },
       h('span', { class: 'sp-rule' }),
       x.logo ? x.logo(26) : null,
@@ -973,7 +1016,7 @@
         ok ? null : h('button', { class: 'btn-small', onclick: () => reconnectFlow(a.email) }, 'Reconnect'),
         h('button', {
           class: 'btn-small ghost',
-          onclick: () => { if (window.confirm(`Remove ${a.email} from Day Board?`)) store.removeAccount(a.email); },
+          onclick: (ev) => confirmTap(ev.currentTarget, 'Tap to confirm', () => store.removeAccount(a.email)),
         }, 'Remove')),
       h('div', { class: 'acct-default' },
         h('span', {}, 'Account line'),
@@ -1012,7 +1055,7 @@
         h('div', { class: 'sys-cards' }, DB.systemList.map((x) => h('button', {
           class: 'sys-card', 'aria-pressed': String(x.id === st.system),
           onclick: () => {
-            if (x.layout === 'flap' && st.system !== x.id) DB.flap.prime('board');
+            if (x.layout === 'flap' && st.system !== x.id) ui.flapBoot = true;
             store.set('system', x.id);
             refreshSheet(true);
           },
@@ -1020,11 +1063,13 @@
 
       h('section', { class: 'set-section' },
         h('h3', { class: 'cap' }, 'Google Calendar'),
-        st.accounts.length ? h('p', { class: 'help' },
+        isPreview() ? h('p', { class: 'help' },
+          'This preview can’t sign in to Google. Google Calendar sync works in the installed version of Day Board (GitHub Pages; see the README). Events you add here stay in this browser.') : null,
+        !isPreview() && st.accounts.length ? h('p', { class: 'help' },
           'Each account has its own line, and any calendar can override it, so work and personal events ride different lines. You can still move single events from their detail sheet.') : null,
-        !hasId || (!fromConfig && !st.accounts.length) ? clientIdForm() : null,
+        !isPreview() && (!hasId || (!fromConfig && !st.accounts.length)) ? clientIdForm() : null,
         st.accounts.map(accountCard),
-        h('div', { class: 'detail-actions' },
+        isPreview() ? null : h('div', { class: 'detail-actions' },
           h('button', { class: 'btn-primary', disabled: !hasId, onclick: addAccountFlow }, icon('plus', 16), st.accounts.length ? 'Add account' : 'Add Google account'),
           st.accounts.length ? h('button', { class: 'btn-outline', onclick: () => sync(true) }, icon('sync', 16), 'Sync now') : null)),
 
@@ -1048,11 +1093,11 @@
         h('h3', { class: 'cap' }, 'Data'),
         h('p', { class: 'help' }, 'Everything stays in this browser: your lines, local events, and short-lived Google access tokens. Nothing is sent anywhere except Google Calendar.'),
         h('button', {
-          class: 'btn-danger', onclick: () => {
-            if (!window.confirm('Reset Day Board? This removes your lines, local events and connected accounts from this browser.')) return;
+          class: 'btn-danger',
+          onclick: (ev) => confirmTap(ev.currentTarget, 'Tap again to erase everything', () => {
             store.resetAll();
             location.reload();
-          },
+          }),
         }, 'Reset Day Board')),
 
       h('p', { class: 'about' }, 'A rebuild of Day Board, the subway-board calendar by @rillotv. Not affiliated with the MTA, Transport for London, or any railway.'));
@@ -1188,10 +1233,14 @@
       : Math.max(9, Math.min(18, (inner - 58) / (timeLen + 10) - 2));
     const pitch = cw + 2;
     const destLen = Math.max(8, Math.floor((wide ? inner - 52 - (timeLen + 10) * pitch - 32 : inner - 52) / pitch));
-    const SLOTS = wide ? 8 : 7;
+    // Fit the slots to the screen height too (landscape phones are short).
+    const vh = window.innerHeight || 800;
+    const rowH = wide ? cw * 1.6 + 6 : cw * 3.2 + 20;
+    const room = vh - 32 - 32 - cw * 2.1 - 14 - (wide ? 24 : 0) - 46;
+    const SLOTS = Math.max(3, Math.min(wide ? 8 : 7, Math.floor(room / rowH)));
     const slots = Array.from({ length: SLOTS }, (_, i) => timed[i] || null);
     const clock = S.boardTime(now, h12());
-    const sig = JSON.stringify([vw, h12(), clock, destLen, allDay.map((e) => e.key),
+    const sig = JSON.stringify([vw, vh, h12(), clock, destLen, timed.length, allDay.map((e) => [e.key, e.title]),
       slots.map((e) => e && [e.key, e.title, e.lineObj.id, S.remark(e, now).text, e.start])]);
     if (sig === displaySig) return;
     displaySig = sig;
@@ -1202,7 +1251,9 @@
       const d = i * 90;
       const tile = e ? S.badge(e.lineObj) : h('span', { class: 'badge ftile blank', 'aria-hidden': 'true' });
       const time = F.text(e ? S.boardTime(e.start, h12()) : '', timeLen, `s${i}|t`, 'display', { cls: 'fl-time', delay: d });
-      const dest = F.text(e ? F.fit(e.title, destLen) : '', destLen, `s${i}|d`, 'display', { cls: 'fl-dest', delay: d + 60 });
+      const dest = e && !F.legible(e.title)
+        ? h('span', { class: 'fd-plain' }, e.title)
+        : F.text(e ? F.fit(e.title, destLen) : '', destLen, `s${i}|d`, 'display', { cls: 'fl-dest', delay: d + 60, label: e ? e.title : '' });
       const remark = F.text(rk.text, 10, `s${i}|r`, 'display', { cls: `fl-remark tone-${rk.tone}`, delay: d + 160 });
       return wide
         ? h('div', { class: 'fd-row' }, tile, time, dest, remark)
@@ -1360,8 +1411,9 @@
   }
 
   // ---------------------------------------------------------------- loop
-  let lastMinute = -1;
-  let lastFull = 0;
+  let lastMinute = Math.floor(Date.now() / 60000);
+  let lastFull = Date.now(); // init renders; no redundant redraw a second later
+  let flapBusyUntil = 0;
   let lastToday = todayKey();
   let lastSyncCheck = 0;
 
@@ -1375,7 +1427,7 @@
       sampleCache = null;
     }
     const minute = Math.floor(now / 60000);
-    if (ui.tab !== 'add' && (minute !== lastMinute || now - lastFull > 20000)) {
+    if (ui.tab !== 'add' && now >= flapBusyUntil && (minute !== lastMinute || now - lastFull > 20000)) {
       lastMinute = minute;
       lastFull = now;
       render();
@@ -1403,10 +1455,14 @@
       else if (e.key === 't') goDate(todayKey());
     });
     let resizeTimer = null;
+    let lastWidth = window.innerWidth;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        if (ui.tab !== 'add') render();
+        if (window.innerWidth !== lastWidth) {
+          lastWidth = window.innerWidth;
+          if (ui.tab !== 'add') render();
+        }
         if (!displayEl.hidden) { displaySig = ''; renderDisplay(); }
       }, 150);
     });
@@ -1422,7 +1478,7 @@
     sync(false);
     setInterval(tick, 1000);
 
-    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    if (!isPreview() && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   }

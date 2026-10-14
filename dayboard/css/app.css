@@ -696,6 +696,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   white-space: nowrap;
 }
 .btn-small.ghost { border-color: var(--divider); color: var(--ink-2); }
+.armed, .armed.btn-small, .armed.btn-danger { background: #c62828; border-color: #c62828; color: #ffffff; }
 
 /* --------------------------------------------------------------- tabs */
 .tabs {
@@ -802,7 +803,7 @@ dialog.sheet[open] { animation: rise .22s ease-out; }
 .inline-form .text-input { margin-top: 0; font-size: 13px; }
 
 /* line editor */
-.line-preview { display: flex; gap: 28px; align-items: flex-end; margin: 0 0 18px; }
+.line-preview { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-end; margin: 0 0 18px; }
 .lp-item { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .lp-item .bullet { --bs: 52px; }
 .lp-item .tab { height: 36px; font-size: 17px; }
@@ -866,6 +867,7 @@ dialog.sheet[open] { animation: rise .22s ease-out; }
 .sys-preview.sys-nyc { background: #0d0d0f; }
 .sys-preview.sys-london { background: #0019a8; }
 .sys-preview.sys-flap { background: #161616; }
+.sys-preview > svg { flex: none; }
 .sys-flap .sp-rule { background: #f2b705; }
 .sp-rule { position: absolute; left: 0; right: 0; top: 7px; height: 2px; background: #fff; }
 .sys-london .sp-rule { background: #dc241f; height: 3px; top: 5px; }
@@ -1136,6 +1138,10 @@ dialog.sheet[open] { animation: rise .22s ease-out; }
 }
 .fd-foot b { color: #f4f1e6; }
 .fd-allday { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fd-plain, .fr-plain { min-width: 0; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fd-plain { font-family: var(--font-helvetica); font-size: calc(var(--cw) * 1.1); color: #f4f1e6; }
+.fr-plain { font-size: 19px; color: var(--ink); }
+.display { overflow: auto; align-items: safe center; }
 .fd-foot > span:last-child { flex: none; white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) {

@@ -278,13 +278,20 @@
   // "Work" -> WRK, "Personal" -> PRS, "Health" -> HLT.
   function flapCode(name) {
     const letters = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!letters) return 'LN';
-    let code = letters[0];
-    for (const ch of letters.slice(1)) {
-      if (code.length === 3) break;
-      if (!'AEIOU'.includes(ch)) code += ch;
+    if (!letters) {
+      // Non-Latin names: their own first characters, so lines stay distinct.
+      return Array.from(String(name || '').replace(/\s+/g, '')).slice(0, 3).join('').toUpperCase() || 'LN';
     }
-    return code.length < 3 ? (code + letters.slice(1)).slice(0, 3) : code;
+    // First letter, then consonants; pad with the skipped letters, keeping
+    // each letter's position so nothing repeats (Bob -> BOB, Eat -> EAT).
+    const picked = [0];
+    for (let i = 1; i < letters.length && picked.length < 3; i++) {
+      if (!'AEIOU'.includes(letters[i])) picked.push(i);
+    }
+    for (let i = 1; i < letters.length && picked.length < 3; i++) {
+      if (!picked.includes(i)) picked.push(i);
+    }
+    return picked.sort((a, b) => a - b).map((i) => letters[i]).join('');
   }
 
   const flapClock = makeClock('en-US', true);

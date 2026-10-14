@@ -1,0 +1,84 @@
+# Day Board: handoff notes
+
+Everything needed to continue this project from any Claude account or
+session. The conversation that built it isn't needed.
+
+## Where things are
+
+- **Repo:** `braachgs/silver-enigma` (public). The app is in `dayboard/`. The
+  repo root `index.html` is a separate, older app (Story Narrator); leave it
+  alone.
+- **Branch:** `ccr-ffb78b8c-d0w0m7`. Day Board is not on the default branch
+  (`claude/work-in-progress-u8Bwg`) yet, so the repo's front page doesn't show
+  it.
+- **Phone preview (no Google sync):** a private claude.ai artifact owned by the
+  Claude account that created it:
+  https://claude.ai/artifact/3KQVfAWr3CknFvRueaEnKY. Another Claude account
+  can't update that link; it would publish its own.
+- **Not set up yet:** GitHub Pages (`https://braachgs.github.io/silver-enigma/dayboard/`
+  once enabled from the branch, root folder) and a Google OAuth client ID (see
+  README.md). Both are needed for real Google Calendar sync.
+
+## What exists
+
+A static PWA (vanilla JS, no build step):
+- **Board styles:** three, under Settings → Board style: NYC Subway, London
+  Underground and Split-Flap Departures.
+- **Board:** live/next/departed rows, countdowns (NYC, London) or time plus
+  remarks (split-flap), an all-day pill, line filters and a month picker.
+- **Lines:** categories with a per-style look, service status, and a strip-map
+  or line diagram of the day.
+- **Add:** add, edit and delete local or Google events. Destructive buttons use
+  a two-tap confirm (`confirmTap`), because some hosts block
+  `window.confirm`.
+- **Google Calendar:** several accounts through Google Identity Services. Each
+  account defaults to its own line, and per-calendar and per-event overrides
+  exist. Tokens last about an hour, then a Reconnect banner appears.
+- **Platform display:** full-screen board in each style. Split-flap animates
+  with fixed slots; NYC uses an LED look; London uses dot-matrix.
+- **Other:** spoken announcements, offline service worker, sample day.
+
+Code map: see README.md → Files. Key modules: `js/systems.js` (the board
+styles), `js/flap.js` (flap engine), `js/store.js` (state, line routing),
+`js/google.js` (multi-account Google), `js/app.js` (UI).
+
+## How to test
+
+`dayboard/tests/run.sh` serves the repo on 127.0.0.1:8765 and runs five
+Playwright suites (visual tour, local events, mocked multi-account Google,
+split-flap, review fixes). Screenshots go to `tests/out/`. Google is mocked;
+nothing has run against real Google yet.
+
+`config.js` has `preview: false` by default. The claude.ai preview build sets
+`preview: true`, hides Google sign-in, and gets its fonts inlined as data
+URIs, because the artifact viewer blocks the Google sign-in script and may block
+loading font files. To rebuild that preview, copy `dayboard/`, set
+`preview: true`, inline the fonts in `css/app.css`, and publish `index.html`
+without its `<html>/<head>/<body>` wrapper.
+
+## Open decisions (owner: Shawn)
+
+1. **Android widget: native, KWGT, or neither?** See
+   `docs/android-widget-decision.md`. Answer the work-profile question first.
+2. **Merge to the default branch?** Do this so the repo front page shows Day
+   Board and Pages can deploy from the default branch.
+3. **GitHub Pages and an OAuth client:** needed for real Google sync. Steps
+   are in README.md.
+
+## Known limitations
+
+- Fonts are approximations: Inter stands in for Helvetica on Android, Cabin
+  for Johnston.
+- **Line colours:** MTA values are high confidence. TfL values are moderate
+  (the Metropolitan line's value differs between sources).
+- **Trademarks:** MTA bullets and the TfL roundel are trademarks. Fine for
+  personal use; get permission before distributing a London-themed build.
+- **Google Workspace:** an admin may block the unverified OAuth app for the
+  work account.
+
+## Working notes for the next session
+
+- This cloud environment can't reach `dl.google.com`, so Android builds have to
+  run on GitHub Actions.
+- Multi-agent workflows ("ultracode") used about 2.5M subagent tokens across
+  the research and review runs. Use them deliberately on a capped plan.

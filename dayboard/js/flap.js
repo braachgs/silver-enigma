@@ -52,6 +52,15 @@
     return lines;
   }
 
+  // False when flap cells would lose most of the text (non-Latin scripts,
+  // emoji): callers then show the title as ordinary text instead.
+  function legible(str) {
+    const visible = String(str || '').replace(/\s+/g, '');
+    if (!visible) return true;
+    const kept = clean(str).replace(/[\s…]/g, '').length;
+    return kept >= Math.ceil(visible.length / 2);
+  }
+
   // One line that fits `width` cells, ending in "…" when cut.
   function fit(str, width) {
     const t = clean(str).trim();
@@ -92,7 +101,8 @@
 
   /* Render `str` into exactly `len` cells.
    * key: stable id for this run of cells within the namespace (e.g. event key + field)
-   * opts.align: 'left' (default) or 'right'; opts.cls: extra class; opts.delay: base stagger in ms */
+   * opts.align: 'left' (default) or 'right'; opts.cls: extra class; opts.delay: base stagger in ms
+   * opts.label: text for screen readers (defaults to str; '' reads nothing) */
   function text(str, len, key, ns, opts = {}) {
     const raw = clean(str).slice(0, len);
     const t = opts.align === 'right' ? raw.padStart(len, ' ') : raw.padEnd(len, ' ');
@@ -111,10 +121,11 @@
       if (old !== undefined && old !== ch) flips[ns] = (flips[ns] || 0) + 1;
       cells.push(cell(ch, old, base + i * 26));
     }
+    const label = String(opts.label !== undefined ? opts.label : (str == null ? '' : str)).trim();
     return h('span', { class: `flapline${opts.cls ? ` ${opts.cls}` : ''}` },
-      h('span', { class: 'sr-only' }, String(str == null ? '' : str).trim()),
+      label ? h('span', { class: 'sr-only' }, label) : null,
       h('span', { class: 'flaps', 'aria-hidden': 'true' }, cells));
   }
 
-  DB.flap = { clean, wrap, fit, text, begin, end, prime, takeFlips };
+  DB.flap = { clean, legible, wrap, fit, text, begin, end, prime, takeFlips };
 })(window.DB);

@@ -146,6 +146,19 @@ line choices). If you untick the second, the account works read-only.
 - **Hidden events.** Events you declined and Google "working location" entries
   are hidden.
 
+## Tests
+
+`tests/run.sh` serves the repo on 127.0.0.1:8765 and runs the Playwright suites:
+visual tour, local events, a mocked multi-account Google flow, the split-flap
+style, and the review regressions. Screenshots land in `tests/out/`.
+
+## More
+
+- `docs/android-widget-decision.md`: native Android widget vs. KWGT vs. a
+  Capacitor wrapper, with sources and confidence levels.
+- `HANDOFF.md`: state of the project and open decisions, for picking it up in a
+  new session or account.
+
 ## Privacy
 
 Everything lives in your browser's localStorage: your lines, events you saved
