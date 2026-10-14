@@ -53,7 +53,9 @@ split-flap, review fixes, day swipes, dates). Screenshots go to `tests/out/`.
 Google is mocked in the suites. `dates-test.js` emulates the owner's setup: a
 Europe/London phone (BST until 25 Oct 2026) with calendars in New York and UTC.
 It uses Playwright's fake clock. Slide and flip animations run on real time, so
-wait in real time before measuring layout after a day change.
+wait in real time before measuring layout after a day change. The suites that
+build events relative to now (every suite but dates, which sets its own times) pin the clock to 10:00 today
+with `tests/clock.js`, so they pass at any time of day.
 
 `config.js` has `preview: false` by default. The claude.ai preview build sets
 `preview: true`, hides Google sign-in, and gets its fonts inlined as data

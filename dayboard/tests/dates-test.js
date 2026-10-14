@@ -307,6 +307,111 @@ const FAR = 4102444800000; // token expiry in 2100
     await ctx.close();
   }
 
+  // ----------------------------------------------- review follow-ups (42b3038)
+  {
+    // An Add form left open across midnight stops calling its date "today".
+    const { ctx, p } = await open({ time: '2026-10-14T23:50:00+01:00', state: base('flap') });
+    await p.click('.tab-btn[data-tab="add"]'); await p.clock.runFor(50);
+    await p.clock.runFor(15 * 60000);
+    const f = await addForm(p);
+    assert(f.date === '2026-10-14' && f.rel === 'yesterday', 'Add form open across midnight now says yesterday: ' + JSON.stringify(f));
+    await ctx.close();
+  }
+  {
+    // Opening Add in the instant after midnight, before the next tick, defaults to the new today.
+    const { ctx, p } = await open({ time: '2026-10-14T23:59:59.000+01:00', state: base('flap') });
+    await p.clock.setSystemTime(T('2026-10-15T00:00:00.400+01:00'));
+    await p.click('.tab-btn[data-tab="add"]');
+    const f = await addForm(p);
+    assert(f.date === '2026-10-15' && f.rel === 'today', 'Add just after midnight opens on the new today: ' + JSON.stringify(f));
+    await ctx.close();
+  }
+  for (const [at, what] of [['2026-10-14T23:55:00+01:00', 'at 23:55'], ['2026-10-15T00:03:00+01:00', 'at 00:03']]) {
+    // The sample day is clipped to today, never emptied, and keeps its live rows.
+    const { ctx, p } = await open({ time: at, state: { version: 1, system: 'nyc', settings: { sample: true }, localEvents: [] } });
+    const r = await p.evaluate(() => ({ rows: document.querySelectorAll('.board .row').length, live: document.querySelectorAll('.board .row.live').length }));
+    await press(p, 'ArrowRight');
+    const tomorrow = await p.$$eval('.board .row', (e) => e.length);
+    assert(r.rows >= 2 && r.live >= 1 && tomorrow === 0, `sample day ${what}: ${r.rows} rows, ${r.live} live today, ${tomorrow} tomorrow`);
+    await ctx.close();
+  }
+  {
+    // Saving the untouched default start in the repeated hour keeps the instant shown.
+    const { ctx, p } = await open({ time: '2026-10-25T01:15:00Z', state: base('flap') }); // 01:15 GMT, the second 01:15
+    await p.click('.tab-btn[data-tab="add"]'); await p.clock.runFor(50);
+    const f = await addForm(p);
+    await p.fill('#f-title', 'Night bus');
+    await p.click('.add-view .btn-primary'); await p.clock.runFor(50); await p.waitForTimeout(200);
+    const e = await p.evaluate(() => JSON.parse(localStorage.getItem('dayboard.v1')).localEvents[0]);
+    assert(f.time === '01:30' && e.start === T('2026-10-25T01:30:00Z'), `new event at the default 01:30 in the repeated hour is 01:30 GMT (${new Date(e.start).toISOString()})`);
+    await ctx.close();
+  }
+  {
+    // A rename keeps a zero-length event's end; a timed multi-day event switched to all day keeps its days.
+    const zero = local('zero', 'Reminder', T('2026-10-14T17:00:00+01:00'), T('2026-10-14T17:00:00+01:00'));
+    const conf = local('conf', 'Conference', T('2026-10-15T09:00:00+01:00'), T('2026-10-17T17:00:00+01:00'));
+    const { ctx, p } = await open({ time: WED, state: base('flap', [zero, conf]) });
+    const edit = async (key, fn) => {
+      await p.evaluate((k) => { DB.app.ui.editKey = k; }, key);
+      await p.click('.tab-btn[data-tab="add"]'); await p.clock.runFor(50);
+      const r = await fn();
+      await p.click('.add-view .btn-primary'); await p.clock.runFor(50); await p.waitForTimeout(200);
+      return r;
+    };
+    const saved = (id) => p.evaluate((i) => JSON.parse(localStorage.getItem('dayboard.v1')).localEvents.find((e) => e.id === i), id);
+    await edit('l|zero', () => p.fill('#f-title', 'Reminder!'));
+    let e = await saved('zero');
+    assert(e.start === zero.start && e.end === zero.end, 'renaming a zero-length event keeps it zero-length');
+    const cap = await edit('l|conf', async () => { await p.click('#f-allday'); return (await addForm(p)).rel; });
+    e = await saved('conf');
+    assert(cap === 'tomorrow · 3 days' && e.allDay && e.start === T('2026-10-15T00:00:00+01:00') && e.end === T('2026-10-18T00:00:00+01:00'),
+      `a Thu–Sat timed event switched to all day keeps 3 days ("${cap}")`);
+    await ctx.close();
+  }
+  {
+    // A background fetch that started before a save can't undo it.
+    const { ctx, p } = await open({ time: WED, state: base('flap') });
+    const r = await p.evaluate(() => {
+      const U = DB.util;
+      const ev = (start) => ({ key: 'g|me|c|e1', source: 'google', id: 'e1', email: 'me', calId: 'c', title: 'Dentist', allDay: false, start, end: start + 3600000 });
+      const startedAt = Date.now() - 1000; // the fetch went out first...
+      DB.store.putEvent(ev(U.fromInputs('2026-10-22', '10:00'))); // ...then the user moved the event to the 22nd
+      DB.store.putWindow(U.dayStart('2026-10-12'), U.dayStart('2026-10-20'), { 'me|c': [ev(U.fromInputs('2026-10-15', '10:00'))] }, startedAt);
+      return DB.store.cachedEvents('me', 'c').map((e) => U.dateKey(e.start));
+    });
+    assert(r.length === 1 && r[0] === '2026-10-22', 'a stale sync answer does not undo a just-saved move: ' + JSON.stringify(r));
+    await ctx.close();
+  }
+  for (const sys of ['nyc', 'london']) {
+    // Layout and accessibility follow-ups at 320px.
+    const { ctx, p } = await open({ time: WED, state: base(sys), w: 320 });
+    await press(p, 'ArrowRight');
+    const a = await p.evaluate(() => ({ hidden: document.querySelector('.board-view .hdr-kicker').getAttribute('aria-hidden') }));
+    await p.click('.today-btn'); await p.clock.runFor(50);
+    const focused = await p.evaluate(() => document.activeElement && document.activeElement.className);
+    assert(a.hidden === 'true' && focused === 'date-btn', `${sys}: board label hidden from screen readers (the date button says it); focus stays in the header after Back to today (${focused})`);
+    await p.click('.tab-btn[data-tab="lines"]'); await p.clock.runFor(50);
+    await press(p, 'ArrowRight');
+    const l = await p.evaluate(() => ({ lines: document.querySelector('.hdr-sub .sub-date').getClientRects().length, hidden: document.querySelector('.hdr-sub .hdr-kicker').getAttribute('aria-hidden') }));
+    assert(l.lines === 1 && l.hidden === null, `${sys}: Lines date never splits at 320px, and its label stays readable`);
+    await p.click('.tab-btn[data-tab="add"]'); await p.clock.runFor(50);
+    const fit = await p.evaluate(() => document.querySelector('.field-pair').getBoundingClientRect().right <= innerWidth - 8);
+    assert(fit, `${sys}: Add form date and time stay on screen at 320px with the caption`);
+    await ctx.close();
+  }
+  {
+    // Landscape: the button joins the label above the date instead of taking a row.
+    const { ctx, p } = await open({ time: WED, state: base('nyc'), w: 844 });
+    await p.setViewportSize({ width: 844, height: 390 });
+    await press(p, 'ArrowRight');
+    const g = await p.evaluate(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      return { sameRow: Math.abs(r('.today-btn').top + r('.today-btn').height / 2 - (r('.hdr-kicker').top + r('.hdr-kicker').height / 2)) < 6, above: r('.today-btn').bottom <= r('.date-text').top + 2 };
+    });
+    assert(g.sameRow && g.above, 'landscape: Back to today sits beside the label, above the date');
+    await ctx.close();
+  }
+
   console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'NO CONSOLE ERRORS');
   if (errors.length) process.exitCode = 1;
   await b.close();

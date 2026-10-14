@@ -1,4 +1,5 @@
 const { chromium } = require('./pw');
+const { MORNING, pinMorning } = require('./clock');
 const OUT = process.argv[2];
 const APP = 'http://127.0.0.1:8765/dayboard/';
 const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode = 1; } else console.log('ok: ' + m); };
@@ -7,7 +8,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   const errors = [];
   // narrow phone
   for (const [w, h, name] of [[320, 640, 'narrow'], [1280, 800, 'desktop']]) {
-    const p = await b.newPage({ viewport: { width: w, height: h } });
+    const p = await b.newPage({ viewport: { width: w, height: h } }); await pinMorning(p);
     p.on('pageerror', e => errors.push(e.message));
     await p.goto(APP); await p.evaluate(() => localStorage.clear()); await p.reload(); await p.waitForTimeout(400);
     const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -15,7 +16,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
     await p.screenshot({ path: `${OUT}/${name}.png` });
     await p.close();
   }
-  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } }); await pinMorning(p);
   p.on('pageerror', e => errors.push(e.message));
   p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   p.on('dialog', d => d.accept());
@@ -26,7 +27,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   await p.click('button:has-text("Add to board")');
   assert(await p.$('.add-view'), 'empty title keeps you on the form');
   // Add a local event 2 hours from now on the Health line
-  const d = new Date(Date.now() + 2 * 3600e3); const pad = n => String(n).padStart(2, '0');
+  const d = new Date(MORNING + 2 * 3600e3); const pad = n => String(n).padStart(2, '0');
   await p.fill('#f-title', 'Physio');
   await p.fill('#f-date', `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
   await p.fill('#f-time', `${pad(d.getHours())}:${pad(d.getMinutes())}`);

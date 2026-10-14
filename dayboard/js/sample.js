@@ -28,9 +28,12 @@
     const t0 = Math.floor(now / 60000) * 60000;
     const london = systemId === 'london';
     const today = todayKey();
-    // Only items that fit inside today: opened in the evening, the later ones
-    // would otherwise spill past midnight onto tomorrow's board.
-    const inToday = (e) => e.start >= dayStart(today) && e.end <= dayStart(addDays(today, 1));
+    // Clip items to today: opened in the evening, the later ones would spill
+    // past midnight onto tomorrow's board, and just after midnight the live
+    // ones began yesterday. Dropping them instead would leave the board empty.
+    const lo = dayStart(today);
+    const hi = dayStart(addDays(today, 1));
+    const clip = (e) => ({ ...e, start: Math.max(e.start, lo), end: Math.min(e.end, hi) });
     const out = TIMED.map(([title, line, nyc, ldn, inMin, dur], i) => ({
       key: `s|${i}`,
       source: 'sample',
@@ -42,7 +45,7 @@
       end: t0 + (inMin + dur) * 60000,
       line: lineFor(line, i),
       writable: false,
-    })).filter(inToday);
+    })).map(clip).filter((e) => e.end - e.start >= 5 * 60000);
     ALL_DAY.forEach(([title, line, gbTitle], i) => out.push({
       key: `s|a${i}`,
       source: 'sample',

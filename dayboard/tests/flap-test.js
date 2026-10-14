@@ -1,10 +1,12 @@
 const { chromium } = require('./pw');
+const { pinMorning } = require('./clock');
 const OUT = process.argv[2];
 const APP = 'http://127.0.0.1:8765/dayboard/';
 const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode = 1; } else console.log('ok: ' + m); };
 (async () => {
   const b = await chromium.launch();
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await pinMorning(p);
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
   p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -66,6 +68,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   assert(await p.$eval('#display', (e) => e.hidden), 'Escape closes display');
   // Reduced motion: no flips
   const rm = await b.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  await pinMorning(rm);
   await rm.goto(APP); await rm.evaluate(() => { localStorage.setItem('dayboard.v1', JSON.stringify({ version: 1, system: 'flap' })); });
   await rm.reload(); await rm.waitForTimeout(300);
   await rm.click('.icon-btn[aria-label="Platform display"]'); await rm.waitForTimeout(200);

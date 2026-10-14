@@ -151,6 +151,7 @@
   let missedRender = false;
 
   let shownDate = ui.date; // the day the screen last showed (renders can be held)
+  let addRefresh = null; // repaints the open Add form's day caption ("today", "yesterday")
 
   function render() {
     if (Date.now() < holdUntil) { missedRender = true; return; }
@@ -166,6 +167,7 @@
     if (ui.tab === 'board') view.replaceChildren(boardView());
     else if (ui.tab === 'lines') view.replaceChildren(linesView());
     else if (!view.querySelector('.add-view')) view.replaceChildren(addView());
+    else if (addRefresh) addRefresh(); // a form left open across midnight stops saying "today"
   }
 
   function renderBanner() {
@@ -205,7 +207,10 @@
     if (t !== 'add') ui.editKey = null;
     ui.tab = t;
     ui.picker = false;
-    if (t === 'add') view.replaceChildren(addView());
+    if (t === 'add') {
+      rollover(); // just after midnight, default to the new today
+      view.replaceChildren(addView());
+    }
     render();
     window.scrollTo(0, 0);
   }
@@ -258,8 +263,11 @@
   // Which day is on screen, said in words above the date: TODAY on today,
   // TOMORROW, 3 DAYS AGO and so on otherwise. The word "today" only ever
   // appears next to the day that really is today.
-  function dayKicker() {
-    return h('span', { class: `hdr-kicker${ui.date === todayKey() ? ' is-today' : ''}` }, relDay(ui.date));
+  // srHidden: the Board's date button already says it to screen readers.
+  function dayKicker(srHidden) {
+    return h('span', {
+      class: `hdr-kicker${ui.date === todayKey() ? ' is-today' : ''}`, 'aria-hidden': srHidden ? 'true' : null,
+    }, relDay(ui.date));
   }
 
   // On any other day, a jump back to today on its own row under the date, so
@@ -270,7 +278,12 @@
     const ahead = ui.date > today;
     return h('button', {
       class: 'today-btn', 'aria-label': `Back to today, ${sys().dateLong(dayStart(today))}`,
-      onclick: () => moveTo(today, ahead ? -1 : 1),
+      onclick: () => {
+        moveTo(today, ahead ? -1 : 1);
+        // The button goes away on today: keep keyboard and screen-reader focus in the header.
+        const to = view.querySelector('.date-btn') || view.querySelector('.hdr-sub .icon-btn');
+        if (to) to.focus();
+      },
     }, ahead ? icon('left', 14) : null, h('span', {}, 'Back to today'), ahead ? null : icon('right', 14));
   }
 
@@ -303,7 +316,7 @@
       h('div', { class: 'hdr' },
         S.logo ? h('span', { class: 'hdr-logo' }, S.logo(40)) : null,
         h('div', { class: 'hdr-day' },
-          dayKicker(),
+          dayKicker(true),
           h('button', {
             class: 'date-btn', 'aria-expanded': String(ui.picker),
             'aria-label': `${S.dateLong(dayStart(ui.date))}, ${relDay(ui.date)}, choose date`,
@@ -622,7 +635,7 @@
           h('h1', {}, S.copy.linesTitle),
           h('div', { class: 'hdr-sub' },
             h('button', { class: 'icon-btn xs', 'aria-label': 'Previous day', onclick: () => shiftDay(-1) }, icon('left', 14)),
-            h('span', {}, dayKicker(), ` · ${S.dateShort(dayStart(ui.date))}`),
+            h('span', {}, dayKicker(), ' · ', h('span', { class: 'sub-date' }, S.dateShort(dayStart(ui.date)))),
             h('button', { class: 'icon-btn xs', 'aria-label': 'Next day', onclick: () => shiftDay(1) }, icon('right', 14))),
           backToToday()),
         headerActions(null)));
@@ -822,20 +835,31 @@
     const notes = h('textarea', { id: 'f-notes', rows: 3, placeholder: 'Notes' });
     notes.value = editing ? editing.notes : '';
 
-    // "Starts" with "tomorrow" (or "today", "in 3 days") under it, so the
-    // form says which day the event will land on.
+    // The form has one date field, so an all-day save keeps the days the
+    // event already covers: a 3-day all-day event, or a timed one from Thu
+    // 09:00 to Sat 17:00 switched to all day.
+    const span0 = !editing ? 1 : Math.max(1, editing.allDay
+      ? daysBetween(dateKey(editing.start), dateKey(editing.end))
+      : daysBetween(dateKey(editing.start), dateKey(Math.max(editing.start, editing.end - 1))) + 1);
+    // "Starts" with "tomorrow" (or "today", "in 3 days · 3 days") under it,
+    // so the form says which day the event will land on.
     const timeLabel = h('span', {}, 'Starts');
     const relCap = h('small', { class: 'rel-cap' });
-    const paintRel = () => { relCap.textContent = /^\d{4}-\d{2}-\d{2}$/.test(date.value) ? relDay(date.value) : ''; };
+    const paintRel = () => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value)) { relCap.textContent = ''; return; }
+      relCap.textContent = relDay(date.value) + (allDay.checked && span0 > 1 ? ` · ${span0} days` : '');
+    };
     date.addEventListener('input', paintRel);
     date.addEventListener('change', paintRel);
     paintRel();
+    addRefresh = paintRel;
     const timeRow = h('div', { class: 'field' }, h('label', { for: 'f-date' }, timeLabel, relCap), h('span', { class: 'field-pair' }, date, time));
     const durRow = h('div', { class: 'field' }, h('label', { for: 'f-dur' }, 'Duration'), durSel);
     const syncAllDay = () => {
       time.hidden = allDay.checked;
       durRow.hidden = allDay.checked;
       timeLabel.textContent = allDay.checked ? 'Date' : 'Starts';
+      paintRel();
     };
     allDay.addEventListener('change', syncAllDay);
     syncAllDay();
@@ -854,16 +878,18 @@
       }
       if (!date.value) { date.focus(); return; }
       const isAllDay = allDay.checked;
-      // An untouched date and time keep the stored instant: re-reading them
-      // would move an event in the repeated hour of a clock-change night.
-      const sameStart = editing && !editing.allDay && !isAllDay
-        && date.value === dateKey(editing.start) && time.value === U.timeValue(editing.start);
-      const s0 = isAllDay ? dayStart(date.value) : sameStart ? editing.start : U.fromInputs(date.value, time.value || '09:00');
-      // A multi-day all-day event keeps its length; the form has one date field.
-      const span = editing && editing.allDay && isAllDay ? Math.max(1, daysBetween(dateKey(editing.start), dateKey(editing.end))) : 1;
+      // An untouched date and time keep the form's starting instant (the
+      // event's, or the default): re-reading them would pick the first of
+      // the two 01:30s on a clock-change night.
+      const sameStart = !(editing && editing.allDay) && !isAllDay
+        && date.value === dateKey(start) && time.value === U.timeValue(start);
+      const s0 = isAllDay ? dayStart(date.value) : sameStart ? start : U.fromInputs(date.value, time.value || '09:00');
+      // An untouched duration keeps the stored end exactly: the select holds
+      // whole minutes, at least 5, so a 0-minute or 17:59:59 end can't round-trip.
+      const keepEnd = editing && sameStart && Number(durSel.value) === dur;
       const data = {
         title: t, allDay: isAllDay, start: s0,
-        end: isAllDay ? dayStart(addDays(date.value, span)) : s0 + Number(durSel.value) * 60000,
+        end: isAllDay ? dayStart(addDays(date.value, span0)) : keepEnd ? editing.end : s0 + Number(durSel.value) * 60000,
         location: loc.value.trim(), notes: notes.value.trim(), line: lineSel.value,
       };
       const label = submitBtn.textContent;
@@ -1606,6 +1632,7 @@
   function tick() {
     const now = Date.now();
     const rolled = rollover();
+    if (rolled && ui.tab === 'add' && addRefresh) addRefresh(); // tick doesn't render the Add tab
     const minute = Math.floor(now / 60000);
     if (ui.tab !== 'add' && (rolled || (now >= flapBusyUntil && (minute !== lastMinute || now - lastFull > 20000)))) {
       lastMinute = minute;

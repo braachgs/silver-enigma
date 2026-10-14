@@ -217,6 +217,7 @@
 
   // Fetch every enabled calendar of every connected account for [from, to).
   async function fetchWindow(from, to) {
+    const startedAt = Date.now(); // saves made after this beat what the fetch returns
     const results = {};
     const errors = [];
     const jobs = [];
@@ -233,7 +234,7 @@
       }
     }
     await Promise.all(jobs);
-    if (Object.keys(results).length || !errors.length) DB.store.putWindow(from, to, results);
+    if (Object.keys(results).length || !errors.length) DB.store.putWindow(from, to, results, startedAt);
     return { errors };
   }
 

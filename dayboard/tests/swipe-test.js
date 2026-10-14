@@ -1,12 +1,13 @@
 // Day swipes, driven through Chrome's real touch pipeline (CDP), so
 // touch-action, scrolling and tap-vs-drag behave as they do on a phone.
 const { chromium } = require('./pw');
+const { MORNING, pinMorning } = require('./clock');
 const APP = 'http://127.0.0.1:8765/dayboard/';
 const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode = 1; } else console.log('ok: ' + m); };
 (async () => {
   const b = await chromium.launch();
   const errors = [];
-  const now = Date.now(), M = 60000;
+  const now = MORNING, M = 60000;
   const events = (n) => Array.from({ length: n }, (_, i) => ({
     id: 'e' + i, title: 'Event ' + i, start: now + (30 + i * 45) * M, end: now + (60 + i * 45) * M, allDay: false,
   }));
@@ -14,6 +15,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   async function open(system, { n = 1, reduced = false, w = 390, hgt = 844 } = {}) {
     const ctx = await b.newContext({ viewport: { width: w, height: hgt }, hasTouch: true, isMobile: true, reducedMotion: reduced ? 'reduce' : 'no-preference' });
     const p = await ctx.newPage();
+    await pinMorning(p);
     p.on('pageerror', (e) => errors.push(e.message));
     p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await p.goto(APP);

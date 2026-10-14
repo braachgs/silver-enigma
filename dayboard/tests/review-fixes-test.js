@@ -1,11 +1,12 @@
 const { chromium } = require('./pw');
+const { MORNING, pinMorning } = require('./clock');
 const APP = 'http://127.0.0.1:8765/dayboard/';
 const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode = 1; } else console.log('ok: ' + m); };
 (async () => {
   const b = await chromium.launch();
   const errors = [];
-  const page = async (w, h) => { const p = await b.newPage({ viewport: { width: w, height: h } }); p.on('pageerror', e => errors.push(e.message)); p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); }); return p; };
-  const now = Date.now(), M = 60000;
+  const page = async (w, h) => { const p = await b.newPage({ viewport: { width: w, height: h } }); await pinMorning(p); p.on('pageerror', e => errors.push(e.message)); p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); }); return p; };
+  const now = MORNING, M = 60000;
   const state = (system) => ({ version: 1, system, settings: { sample: false }, localEvents: [
     { id: 'a', title: 'Встреча с командой', start: now + 30 * M, end: now + 60 * M, allDay: false },
     { id: 'b', title: '🎂🎉', start: now + 90 * M, end: now + 120 * M, allDay: false },

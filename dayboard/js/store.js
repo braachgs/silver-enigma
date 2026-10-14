@@ -229,8 +229,16 @@
   function cachedEvents(email, calId) {
     return cache.cals[`${email}|${calId}`] || [];
   }
-  function putWindow(from, to, results) {
-    for (const [calKey, events] of Object.entries(results)) {
+  // When this device last saved or deleted each event ("calKey|id"). A window
+  // fetch that started before that holds an older copy, which must not win:
+  // otherwise an edit made while a background sync is in flight snaps back.
+  const touched = new Map();
+  const touch = (ev) => touched.set(`${ev.email}|${ev.calId}|${ev.id}`, Date.now());
+
+  function putWindow(from, to, results, startedAt = Infinity) {
+    for (const [calKey, got] of Object.entries(results)) {
+      const mine = (e) => (touched.get(`${calKey}|${e.id}`) || 0) >= startedAt;
+      const events = got.filter((e) => !mine(e));
       // Fresh copies replace old ones by id, wherever the old ones sat. Google
       // judges an all-day event's end in its calendar's time zone, so a UTC
       // or New York all-day event ending at London midnight comes back in
@@ -238,7 +246,7 @@
       // its old copy may sit outside the window; keeping both would duplicate
       // or ghost it.
       const fresh = new Set(events.map((e) => e.id));
-      const keep = (cache.cals[calKey] || []).filter((e) => !fresh.has(e.id) && (e.end <= from || e.start >= to));
+      const keep = (cache.cals[calKey] || []).filter((e) => mine(e) || (!fresh.has(e.id) && (e.end <= from || e.start >= to)));
       cache.cals[calKey] = keep.concat(events);
     }
     cache.fetched = { from, to, at: Date.now() };
@@ -247,12 +255,14 @@
     commit();
   }
   function putEvent(ev) {
+    touch(ev);
     const calKey = `${ev.email}|${ev.calId}`;
     cache.cals[calKey] = (cache.cals[calKey] || []).filter((e) => e.id !== ev.id).concat(ev);
     write(CACHE_KEY, cache);
     commit();
   }
   function dropEvent(ev) {
+    touch(ev);
     const calKey = `${ev.email}|${ev.calId}`;
     cache.cals[calKey] = (cache.cals[calKey] || []).filter((e) => e.id !== ev.id);
     write(CACHE_KEY, cache);

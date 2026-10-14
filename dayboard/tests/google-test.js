@@ -1,4 +1,5 @@
 const { chromium } = require('./pw');
+const { MORNING, pinMorning } = require('./clock');
 const OUT = process.argv[2];
 const APP = 'http://127.0.0.1:8765/dayboard/';
 const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode = 1; } else console.log('ok: ' + m); };
@@ -7,6 +8,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const p = await ctx.newPage();
+  await pinMorning(p);
   const errors = [];
   p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   p.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -29,9 +31,9 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   });
 
   // Fake Calendar API.
-  const now = Date.now();
+  const now = MORNING;
   const iso = (m) => new Date(Math.floor(now / 60000) * 60000 + m * 60000).toISOString();
-  const today = new Date(); const pad = (x) => String(x).padStart(2, '0');
+  const today = new Date(MORNING); const pad = (x) => String(x).padStart(2, '0');
   const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
   const db = {
     'work@company.com|work@company.com': [

@@ -1,10 +1,12 @@
 const { chromium } = require('./pw');
+const { pinMorning } = require('./clock');
 const OUT = process.argv[2];
 const URL = 'http://127.0.0.1:8765/dayboard/';
 (async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const p = await ctx.newPage();
+  await pinMorning(p);
   const errors = [];
   p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
   p.on('pageerror', e => errors.push('pageerror: ' + e.message));

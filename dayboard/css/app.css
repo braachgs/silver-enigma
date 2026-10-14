@@ -276,7 +276,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   color: var(--chrome-dim);
 }
 .hdr-kicker.is-today { color: var(--accent); }
+/* London's accent is white, close to its pale-blue dim colour: give TODAY
+   the red of the header rule as well. */
+[data-system="london"] .hdr-kicker.is-today { text-decoration: underline 3px #dc241f; text-underline-offset: 4px; }
 .hdr-sub .hdr-kicker { display: inline; margin: 0; font-size: inherit; letter-spacing: inherit; }
+.hdr-sub .sub-date { white-space: nowrap; } /* a narrow phone wraps after the dot, never inside the date */
+/* The date now sits under the label: keep the London roundel beside it. */
+.hdr:has(> .hdr-day) .hdr-logo { padding-top: 23px; }
 .today-btn {
   display: inline-flex; align-items: center; gap: 4px;
   height: 32px;
@@ -290,6 +296,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .today-btn:has(> .icon:last-child) { padding: 0 10px 0 14px; }
 [data-system="nyc"] .today-btn { color: #111; }
+/* Landscape phones: a row of its own under the date would cost a whole event
+   row, so the button joins the label above the date ("TOMORROW  ‹ BACK TO
+   TODAY"). The column is too narrow for it to sit beside the date. */
+@media (max-height: 500px) {
+  .hdr-day { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 6px; }
+  .hdr-day .hdr-kicker { margin-bottom: 0; }
+  .hdr-day .today-btn { order: 1; margin-top: 0; height: 28px; }
+  .hdr-day .date-btn { order: 2; flex-basis: 100%; }
+}
 
 .hdr-lines {
   display: flex;
@@ -623,7 +638,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .field.col { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; }
 .field > label { font-size: 15px; color: var(--ink-2); }
-.rel-cap { display: block; margin-top: 2px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.rel-cap { display: block; margin-top: 2px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); }
+/* A long caption ("TOMORROW · 3 DAYS") must not push the date and time off
+   a narrow screen: they drop to their own right-aligned line instead. */
+.field:has(> .field-pair) { flex-wrap: wrap; row-gap: 2px; }
+.field-pair { margin-left: auto; }
 .field input:not([type="checkbox"]), .field select, .field textarea {
   min-width: 0;
   border: 0;
