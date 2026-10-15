@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Day Board app icon: two split-flap cells spelling DB under the amber rule of the
+       split-flap board. Source for the PNGs; render them with: node icons/render.js
+       Key art stays inside the maskable safe zone (radius 205 around the centre). -->
+  <style>@font-face{font-family:Flap;src:url(../fonts/barlow-condensed-latin-600-normal.woff2)}</style>
+  <rect width="512" height="512" fill="#161616"/>
+  <rect x="0" y="104" width="512" height="10" fill="#F2B705"/>
+  <g>
+    <rect x="99" y="150" width="150" height="232" rx="18" fill="#353535"/>
+    <rect x="99" y="266" width="150" height="116" rx="18" fill="#2b2b2b"/>
+    <rect x="99" y="266" width="150" height="18" fill="#2b2b2b"/>
+    <text x="174" y="266" dy="0.355em" text-anchor="middle" font-family="Flap" font-weight="600" font-size="208.8" fill="#FFFFFF">D</text>
+    <rect x="99" y="262" width="150" height="8" fill="#101010"/>
+    <rect x="91" y="253" width="12" height="26" rx="4" fill="#5a5a5a"/>
+    <rect x="245" y="253" width="12" height="26" rx="4" fill="#5a5a5a"/>
+  </g>
+  <g>
+    <rect x="263" y="150" width="150" height="232" rx="18" fill="#353535"/>
+    <rect x="263" y="266" width="150" height="116" rx="18" fill="#2b2b2b"/>
+    <rect x="263" y="266" width="150" height="18" fill="#2b2b2b"/>
+    <text x="338" y="266" dy="0.355em" text-anchor="middle" font-family="Flap" font-weight="600" font-size="208.8" fill="#FFFFFF">B</text>
+    <rect x="263" y="262" width="150" height="8" fill="#101010"/>
+    <rect x="255" y="253" width="12" height="26" rx="4" fill="#5a5a5a"/>
+    <rect x="409" y="253" width="12" height="26" rx="4" fill="#5a5a5a"/>
+  </g></svg>

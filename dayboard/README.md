@@ -218,7 +218,7 @@ js/app.js              Board, Lines, Add, sheets, display, announcements, sync
 sw.js                  offline app shell
 manifest.webmanifest   install metadata
 fonts/                 Inter, Cabin, VT323, Doto, Barlow Condensed (SIL OFL 1.1, licences included)
-icons/                 app icons
+icons/                 app icon: flap.svg is the source, render.js makes the PNGs
 ```
 
 ## Credits and trademarks
