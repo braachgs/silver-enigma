@@ -12,6 +12,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.text.format.DateFormat
+import android.util.Log
 import android.widget.RemoteViews
 import dayboard.core.BoardBuilder
 import dayboard.core.BoardLayout
@@ -43,10 +44,14 @@ object WidgetUpdater {
         val names = CalendarSource.calendars(context).associate { it.id to it.name }
         val codes = HashMap<Long, String>()
         val own = { e: Event -> Line(codes.getOrPut(e.calendarId) { Settings.code(context, e.calendarId, names[e.calendarId] ?: "") }, e.color) }
-        val config = Settings.lineConfig(context) ?: return own
-        val refs = CalendarSource.refs(context, events, zone)
+        // Day Board's lines are a nicety: if the phone's calendar store refuses
+        // any of these lookups, draw the calendar's own tile rather than nothing.
+        val config = runCatching { Settings.lineConfig(context) }.getOrNull() ?: return own
+        val refs = runCatching { CalendarSource.refs(context, events, zone) }
+            .onFailure { Log.w("DayBoard", "line lookup failed", it) }
+            .getOrNull() ?: return own
         return { e ->
-            val line = refs[CalendarSource.refKey(e)]?.let { config.resolve(it, e.start, zone) }
+            val line = runCatching { refs[CalendarSource.refKey(e)]?.let { config.resolve(it, e.start, zone) } }.getOrNull()
             if (line != null) Line(line.code, line.color) else own(e)
         }
     }
@@ -87,21 +92,26 @@ object WidgetUpdater {
         }
         val mgr = AppWidgetManager.getInstance(context)
         val now = System.currentTimeMillis()
-        val events = CalendarSource.events(context, now, ZoneId.systemDefault())
         var next = Long.MAX_VALUE
-        for (id in ids) {
-            val (wDp, hDp) = sizeDp(mgr, id)
-            val (bitmap, model) = render(context, wDp, hDp, now, events)
-            val compact = hDp < 190
-            val views = RemoteViews(context.packageName, if (compact) R.layout.widget_board_compact else R.layout.widget_board)
-            views.setImageViewBitmap(R.id.board, bitmap)
-            views.setContentDescription(R.id.board, describe(model))
-            views.setOnClickPendingIntent(R.id.widget_root, clickIntent(context))
-            mgr.updateAppWidget(id, views)
-            next = minOf(next, model.nextChange)
+        try {
+            val events = CalendarSource.events(context, now, ZoneId.systemDefault())
+            for (id in ids) {
+                val (wDp, hDp) = sizeDp(mgr, id)
+                val (bitmap, model) = render(context, wDp, hDp, now, events)
+                val compact = hDp < 190
+                val views = RemoteViews(context.packageName, if (compact) R.layout.widget_board_compact else R.layout.widget_board)
+                views.setImageViewBitmap(R.id.board, bitmap)
+                views.setContentDescription(R.id.board, describe(model))
+                views.setOnClickPendingIntent(R.id.widget_root, clickIntent(context))
+                mgr.updateAppWidget(id, views)
+                next = minOf(next, model.nextChange)
+            }
+        } finally {
+            // Always arm the next wake-up, so one failed redraw can't freeze the
+            // board: after a failure, try again in five minutes.
+            scheduleAlarm(context, if (next == Long.MAX_VALUE) now + 5 * 60_000 else next)
+            if (scheduleContentJob) CalendarChangeJob.schedule(context)
         }
-        scheduleAlarm(context, next)
-        if (scheduleContentJob) CalendarChangeJob.schedule(context)
     }
 
     /** Portrait size: Android reports the width as the minimum and the height as the maximum. */
