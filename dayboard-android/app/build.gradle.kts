@@ -5,10 +5,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Release builds are signed with app/release.p12, whose password lives only in
-// the DAYBOARD_KEYSTORE_PASSWORD secret. Without it the build is debug-signed,
-// which can't update an installed release build.
-val keystorePassword: String? = System.getenv("DAYBOARD_KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+// Release builds are signed with app/release.p12, which the GitHub workflow
+// creates on its first signed run, encrypted with the DAYBOARD_KEYSTORE_PASSWORD
+// secret (that secret is the only place the password exists). Without both,
+// the build is debug-signed and can't update an installed release build.
+val keystoreFile = file("release.p12")
+val keystorePassword: String? = System.getenv("DAYBOARD_KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() && keystoreFile.exists() }
 val buildNumber = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
 
 android {
@@ -26,7 +28,7 @@ android {
     signingConfigs {
         if (keystorePassword != null) {
             create("release") {
-                storeFile = file("release.p12")
+                storeFile = keystoreFile
                 storeType = "pkcs12"
                 storePassword = keystorePassword
                 keyAlias = "dayboard"

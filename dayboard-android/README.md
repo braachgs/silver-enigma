@@ -21,7 +21,7 @@ Departures board. Tap it to open Day Board.
 |---|---|
 | `core/` | Plain Kotlin, no Android: text rules (`Flap`), remarks (`Remarks`), which departures to show (`BoardBuilder`), layout and drawing (`BoardLayout`, `BoardRenderer`). |
 | `app/` | The Android app: `WidgetUpdater` (render and push), `CalendarSource`, `Receivers` (widget, alarms, boot/time-zone, calendar-change job), `MainActivity`. |
-| `app/release.p12` | Signing key, encrypted. Its password is only in the `DAYBOARD_KEYSTORE_PASSWORD` repository secret. |
+| `app/release.p12` | Signing key, created and committed by the workflow on its first signed build, encrypted with the `DAYBOARD_KEYSTORE_PASSWORD` repository secret (the only place the password exists). |
 | `OFL-BarlowCondensed.txt` | Licence for the bundled Barlow Condensed font (SIL OFL 1.1). |
 
 ## Build

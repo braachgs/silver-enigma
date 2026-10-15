@@ -1,9 +1,13 @@
 # Builds the Day Board Android widget (dayboard-android/) and publishes the
 # APK at a fixed link:
 #   https://github.com/braachgs/silver-enigma/releases/download/widget/DayBoard-widget.apk
-# Publishing needs the DAYBOARD_KEYSTORE_PASSWORD secret (the password of
-# dayboard-android/app/release.p12), so every build is signed with the same
-# key and installs as an update. Without it, the build is only checked.
+#
+# Signing: every build must use the same key, or Android won't install it as
+# an update. The key's password exists only in the DAYBOARD_KEYSTORE_PASSWORD
+# repository secret, which the owner sets. On the first run with that secret,
+# this workflow creates the key (dayboard-android/app/release.p12, encrypted
+# with the password) and commits it; later runs reuse it. Without the secret,
+# the build is only checked, not published.
 name: Day Board widget (Android)
 
 on:
@@ -34,10 +38,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
+      # The runner image ships the Android SDK; make sure the pieces we compile against are there.
       - name: Install Android 15 SDK platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Create the signing key (first signed build only)
+        if: env.DAYBOARD_KEYSTORE_PASSWORD != '' && hashFiles('dayboard-android/app/release.p12') == ''
+        run: |
+          keytool -genkeypair -storetype PKCS12 -keystore dayboard-android/app/release.p12 \
+            -alias dayboard -keyalg RSA -keysize 3072 -validity 36500 -dname "CN=Day Board widget" \
+            -storepass:env DAYBOARD_KEYSTORE_PASSWORD -keypass:env DAYBOARD_KEYSTORE_PASSWORD
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dayboard-android/app/release.p12
+          git commit -m "Day Board widget: signing key, encrypted with the DAYBOARD_KEYSTORE_PASSWORD secret"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
