@@ -17,10 +17,10 @@ session. The conversation that built it isn't needed.
   can't update that link; it would publish its own.
 - **Live app:** GitHub Pages serves this branch at
   `https://braachgs.github.io/silver-enigma/dayboard/`, and the owner runs it
-  on an Android phone. An OAuth client exists. The last error seen was "Google
-  Calendar API has not been used in project 278695224344", fixed by enabling
-  the Calendar API in that Cloud project. Real sync hasn't been confirmed
-  working yet.
+  on an Android phone. Real Google sync works (confirmed by the owner on
+  2026-10-15) through the OAuth client in Cloud project 278695224344, with the
+  Calendar API enabled there. The owner's personal account is connected; the
+  work account hasn't been tried (a Workspace admin may block it).
 
 ## What exists
 
@@ -70,9 +70,9 @@ without its `<html>/<head>/<body>` wrapper.
    `docs/android-widget-decision.md`. Answer the work-profile question first.
 2. **Merge to the default branch?** Do this so the repo front page shows Day
    Board and Pages can deploy from the default branch.
-3. **Google sync:** Pages and the OAuth client are set up. Confirm that
-   adding each account works and that events appear (README.md has the
-   steps).
+3. **Google sync:** working for the personal account. Next: assign that
+   account and its shared calendars to lines (Settings), and try adding the
+   work account.
 
 ## Known limitations
 
