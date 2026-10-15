@@ -2,6 +2,7 @@ package com.braachgs.dayboard
 
 import android.content.Context
 import dayboard.core.Flap
+import dayboard.core.LineConfig
 
 /** Which calendars the widget shows, and the three-letter code on each one's line tile. */
 object Settings {
@@ -25,6 +26,25 @@ object Settings {
 
     fun customCode(context: Context, calendarId: Long): String? =
         prefs(context).getString("code_$calendarId", null)?.takeIf { it.isNotBlank() }
+
+    /** The lines sent from the Day Board web app (Settings > Android widget), if any. */
+    fun lineConfig(context: Context): LineConfig? = LineConfig.parse(prefs(context).getString(LINES, null))
+
+    fun linesSentAt(context: Context): Long = prefs(context).getLong(LINES_AT, 0L)
+
+    /** Stores [text] if it is a Day Board line setup; false otherwise. */
+    fun saveLines(context: Context, text: String?): Boolean {
+        if (LineConfig.parse(text) == null) return false
+        prefs(context).edit().putString(LINES, text).putLong(LINES_AT, System.currentTimeMillis()).apply()
+        return true
+    }
+
+    fun clearLines(context: Context) {
+        prefs(context).edit().remove(LINES).remove(LINES_AT).apply()
+    }
+
+    private const val LINES = "lines"
+    private const val LINES_AT = "lines_at"
 
     fun setCode(context: Context, calendarId: Long, code: String) {
         val clean = Flap.clean(code).replace(" ", "").take(3)

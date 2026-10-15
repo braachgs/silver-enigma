@@ -56,6 +56,32 @@ class MainActivity : Activity() {
             setBackgroundColor(board)
             addView(content)
         })
+        // A rotation re-creates the activity with the same link: take it once.
+        if (savedInstanceState == null) receiveLines(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        receiveLines(intent)
+        build()
+    }
+
+    /** dayboard://lines?d=<base64url>: the line setup sent from the web app's Settings. */
+    private fun receiveLines(intent: Intent?) {
+        if (intent == null) return
+        val uri = intent.data ?: return
+        if (intent.action != Intent.ACTION_VIEW || uri.scheme != "dayboard" || uri.host != "lines") return
+        val text = runCatching {
+            String(android.util.Base64.decode(uri.getQueryParameter("d") ?: "", android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP), Charsets.UTF_8)
+        }.getOrNull()
+        if (text != null && text.length <= 1_000_000 && Settings.saveLines(this, text)) {
+            val n = Settings.lineConfig(this)?.lines?.size ?: 0
+            Toast.makeText(this, "Got $n lines from Day Board. The widget now matches the app.", Toast.LENGTH_LONG).show()
+            pushToWidgets.run()
+        } else {
+            Toast.makeText(this, "That link didn't carry Day Board lines.", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onResume() {
@@ -102,13 +128,35 @@ class MainActivity : Activity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WidgetUpdater.WEB_APP)))
         }.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(10) })
 
+        linesSection()
         if (allowed) calendarSection()
 
-        content.addView(text("Times show your phone's 12- or 24-hour setting. Line colours are your calendar colours. Tap the widget to open Day Board.", 13f, dim).apply {
+        val colours = if (Settings.lineConfig(this) != null) "Line codes and colours come from Day Board." else "Line colours are your calendar colours."
+        content.addView(text("Times show your phone's 12- or 24-hour setting. $colours Tap the widget to open Day Board.", 13f, dim).apply {
             setPadding(0, dp(24), 0, 0)
         })
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
         content.addView(text("Version $version", 12f, dim).apply { setPadding(0, dp(6), 0, 0) })
+    }
+
+    private fun linesSection() {
+        content.addView(text("LINES", 14f, dim, flap).apply {
+            letterSpacing = 0.14f
+            setPadding(0, dp(28), 0, dp(4))
+        })
+        val config = Settings.lineConfig(this)
+        if (config == null) {
+            content.addView(text("To give the widget the same line codes and colours as Day Board, open Day Board > Settings > Android widget > Send lines to widget.", 13f, ink))
+        } else {
+            val at = android.text.format.DateFormat.getMediumDateFormat(this).format(java.util.Date(Settings.linesSentAt(this))) + ", " +
+                android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(Settings.linesSentAt(this)))
+            content.addView(text("Using Day Board's ${config.lines.size} lines (${config.lines.joinToString(" ") { it.code }}), sent $at. Send them again from Day Board after you change lines.", 13f, ink))
+            content.addView(button("Use calendar colours instead", primary = false) {
+                Settings.clearLines(this)
+                build()
+                changed()
+            }.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(10) })
+        }
     }
 
     private fun calendarSection() {
@@ -116,7 +164,8 @@ class MainActivity : Activity() {
             letterSpacing = 0.14f
             setPadding(0, dp(28), 0, dp(4))
         })
-        content.addView(text("Switch a calendar off to keep it off the board. The code is what its line tile says.", 13f, dim).apply {
+        val hint = if (Settings.lineConfig(this) != null) " The code is used only for calendars Day Board doesn't have." else " The code is what its line tile says."
+        content.addView(text("Switch a calendar off to keep it off the board.$hint", 13f, dim).apply {
             setPadding(0, 0, 0, dp(8))
         })
         val hidden = Settings.hiddenCalendars(this)

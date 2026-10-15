@@ -11,7 +11,7 @@
  *   5. the first line */
 (function (DB) {
   'use strict';
-  const { uid, todayKey, addDays, dayStart } = DB.util;
+  const { uid, todayKey, addDays, dayStart, dateKey } = DB.util;
 
   const KEY = 'dayboard.v1';
   const TOKENS_KEY = 'dayboard.v1.tokens';
@@ -60,6 +60,9 @@
         sample: true,
         clientId: '',
         lastDest: 'local',
+        // From this day on, events without a line of their own default to
+        // this line, ahead of calendar and account lines: { date, line }.
+        lineFrom: null,
       },
     };
   }
@@ -71,6 +74,13 @@
     : base;
   if (!Array.isArray(state.lines) || !state.lines.length) state.lines = base.lines;
   if (!DB.SYSTEMS[state.system]) state.system = 'nyc';
+  // One-off: everything from Wed 21 Oct 2026 rides the Personal line. Set once
+  // (Settings can change or remove it, and that choice sticks).
+  if (!state.settings.lineFromSet && !(window.DayBoardTest || {}).noLineFrom) { // tests on today's clock opt out
+    const personal = state.lines.find((l) => l.name.toLowerCase() === 'personal');
+    if (personal) state.settings.lineFrom = { date: '2026-10-21', line: personal.id };
+    state.settings.lineFromSet = true;
+  }
 
   let tokens = read(TOKENS_KEY) || {};
   let cache = read(CACHE_KEY) || { cals: {}, fetched: null };
@@ -126,6 +136,7 @@
     }
     for (const e of state.localEvents) if (e.line === id) e.line = state.lines[0].id;
     for (const k of Object.keys(state.overrides)) if (state.overrides[k] === id) delete state.overrides[k];
+    if (state.settings.lineFrom && state.settings.lineFrom.line === id) state.settings.lineFrom = null;
     commit();
   }
   function moveLine(id, dir) {
@@ -145,6 +156,9 @@
     if (o) return o;
     const own = lineById(ev.line) || lineById(ev.extLine) || lineByName(ev.extLineName);
     if (own) return own;
+    const from = state.settings.lineFrom;
+    const dated = from && ev.start != null && dateKey(ev.start) >= from.date && lineById(from.line);
+    if (dated) return dated;
     if (ev.source === 'google') {
       const a = account(ev.email);
       const c = a && a.calendars.find((x) => x.id === ev.calId);
@@ -305,6 +319,40 @@
     commit();
   }
 
+  // The lines as the Android widget needs them (dayboard-android LineConfig):
+  // tab-separated records, the split-flap look of each line, which calendar
+  // and account rides which line, lines picked for single Google events, and
+  // the dated default.
+  function widgetSetup() {
+    const F = DB.SYSTEMS.flap;
+    const clean = (x) => String(x == null ? '' : x).replace(/[\t\r\n]+/g, ' ');
+    const rec = (...f) => f.map(clean).join('\t');
+    const out = ['DB1'];
+    for (const l of state.lines) {
+      const st = F.style(l);
+      out.push(rec('L', l.id, l.name, st.mark, st.hex.replace('#', '')));
+    }
+    const events = new Map();
+    for (const a of state.accounts) {
+      out.push(rec('A', a.email, (lineById(a.defaultLine) || state.lines[0]).id));
+      for (const c of a.calendars) {
+        if (lineById(c.line)) out.push(rec('C', a.email, c.id, c.line));
+        for (const e of cachedEvents(a.email, c.id)) {
+          const own = lineById(e.extLine) || lineByName(e.extLineName);
+          if (own) events.set(e.id, own.id);
+        }
+      }
+    }
+    for (const [k, id] of Object.entries(state.overrides)) {
+      const parts = k.split('|');
+      if (parts[0] === 'g' && parts.length >= 4 && lineById(id)) events.set(parts.slice(3).join('|'), id);
+    }
+    for (const [id, line] of events) out.push(rec('E', id, line));
+    const from = state.settings.lineFrom;
+    if (from && lineById(from.line)) out.push(rec('F', from.date, from.line));
+    return out.join('\n');
+  }
+
   function resetAll() {
     for (const k of [KEY, TOKENS_KEY, CACHE_KEY]) {
       try { localStorage.removeItem(k); } catch (_) { /* storage unavailable */ }
@@ -317,6 +365,6 @@
     account, upsertAccount, updateAccount, updateCalendar, removeAccount,
     token, setToken, clearToken,
     cachedEvents, putWindow, putEvent, dropEvent, covered, lastFetch,
-    addLocal, updateLocal, removeLocal, resetAll,
+    addLocal, updateLocal, removeLocal, resetAll, widgetSetup,
   };
 })(window.DB);

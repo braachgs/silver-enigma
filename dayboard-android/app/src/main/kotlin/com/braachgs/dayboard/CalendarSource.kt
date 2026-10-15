@@ -9,6 +9,7 @@ import android.provider.CalendarContract.Attendees
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Instances
 import dayboard.core.Event
+import dayboard.core.EventRef
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -106,6 +107,74 @@ object CalendarSource {
         }
         return out
     }
+
+    /**
+     * What Day Board's line setup needs to know about each event: its Google
+     * account, its calendar's ids, its Google event id, and the line Day
+     * Board saved on it (when the phone syncs private extended properties).
+     */
+    fun refs(context: Context, events: List<Event>, zone: ZoneId): Map<Pair<Long, Long>, EventRef> {
+        if (!hasPermission(context) || events.isEmpty()) return emptyMap()
+        val cr = context.contentResolver
+        class Cal(val account: String, val ids: List<String>)
+        val cals = HashMap<Long, Cal>()
+        cr.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            arrayOf(
+                CalendarContract.Calendars._ID,
+                CalendarContract.Calendars.ACCOUNT_NAME,
+                "_sync_id", // the calendar's Google id
+                CalendarContract.Calendars.OWNER_ACCOUNT,
+                CalendarContract.Calendars.NAME,
+            ),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val ids = (2..4).mapNotNull { c.getString(it)?.takeIf(String::isNotBlank) }.distinct()
+                cals[c.getLong(0)] = Cal(c.getString(1) ?: "", ids)
+            }
+        }
+        val ids = events.map { it.id }.distinct()
+        val inList = ids.joinToString(",")
+        val syncIds = HashMap<Long, String>()
+        runCatching {
+            cr.query(Events.CONTENT_URI, arrayOf(Events._ID, "_sync_id"), "${Events._ID} IN ($inList)", null, null)?.use { c ->
+                while (c.moveToNext()) c.getString(1)?.let { syncIds[c.getLong(0)] = it }
+            }
+        }
+        val saved = HashMap<Long, String>()
+        val savedName = HashMap<Long, String>()
+        runCatching {
+            val xp = CalendarContract.ExtendedProperties.CONTENT_URI
+            cr.query(
+                xp,
+                arrayOf(CalendarContract.ExtendedProperties.EVENT_ID, CalendarContract.ExtendedProperties.NAME, CalendarContract.ExtendedProperties.VALUE),
+                "${CalendarContract.ExtendedProperties.EVENT_ID} IN ($inList)", null, null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val name = c.getString(1) ?: continue
+                    val value = c.getString(2)?.takeIf { it.isNotBlank() } ?: continue
+                    when {
+                        name.endsWith("dayboardLineName") -> savedName[c.getLong(0)] = value
+                        name.endsWith("dayboardLine") -> saved[c.getLong(0)] = value
+                    }
+                }
+            }
+        }
+        val out = HashMap<Pair<Long, Long>, EventRef>()
+        for (e in events) {
+            val cal = cals[e.calendarId] ?: continue
+            // Google numbers a repeating event's instances by their original start, in UTC (all-day: the date).
+            val original = if (e.allDay) {
+                Instant.ofEpochMilli(e.start).atZone(zone).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            } else e.start
+            out[refKey(e)] = EventRef(cal.account, cal.ids, syncIds[e.id], original, e.allDay, saved[e.id], savedName[e.id])
+        }
+        return out
+    }
+
+    /** Key for [refs]: an instance is its event id plus its start. */
+    fun refKey(e: Event): Pair<Long, Long> = e.id to e.start
 
     private fun utcMidnightToLocal(t: Long, zone: ZoneId): Long =
         Instant.ofEpochMilli(t).atZone(ZoneOffset.UTC).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()

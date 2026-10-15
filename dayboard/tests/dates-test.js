@@ -412,6 +412,56 @@ const FAR = 4102444800000; // token expiry in 2100
     await ctx.close();
   }
 
+  // ------------------------------------------- Personal from 21 Oct, Now strip
+  {
+    const lines = [
+      { id: 'w1', name: 'Work', nyc: { letter: 'A', color: 'blue' }, london: { line: 'victoria' }, flap: { color: 'blue' } },
+      { id: 'p1', name: 'Personal', nyc: { letter: 'D', color: 'yellow' }, london: { line: 'circle' }, flap: { color: 'yellow' } },
+      { id: 's1', name: 'Social', nyc: { letter: 'F', color: 'purple' }, london: { line: 'metropolitan' }, flap: { color: 'magenta' } },
+    ];
+    const evs = [
+      local('tue', 'Dentist', T('2026-10-20T23:00:00+01:00'), T('2026-10-20T23:30:00+01:00')),
+      local('wed', 'Lunch', T('2026-10-21T00:30:00+01:00'), T('2026-10-21T01:00:00+01:00')),
+      { ...local('own', 'Party', T('2026-10-22T19:00:00+01:00'), T('2026-10-22T22:00:00+01:00')), line: 's1' },
+      local('next', 'Standup', T('2026-10-20T10:30:00+01:00'), T('2026-10-20T10:45:00+01:00')),
+    ];
+    const { ctx, p } = await open({ time: '2026-10-20T10:00:00+01:00', state: { ...base('nyc', evs), lines } });
+    const r = await p.evaluate(() => {
+      const of = (id) => DB.store.resolveLine({ ...DB.store.state.localEvents.find((e) => e.id === id), key: id, source: 'local' }).name;
+      return { tue: of('tue'), wed: of('wed'), own: of('own'), from: DB.store.state.settings.lineFrom, setup: DB.store.widgetSetup() };
+    });
+    assert(r.tue === 'Work' && r.wed === 'Personal' && r.own === 'Social', `21 Oct on rides Personal (local midnight is the cut); a line picked for an event wins: ${JSON.stringify(r)}`);
+    assert(r.from && r.from.date === '2026-10-21' && r.from.line === 'p1', 'the dated default is set once, on Personal');
+    assert(/^DB1\nL\tw1\tWork\tWRK\t[0-9A-F]{6}\n/.test(r.setup) && /\nF\t2026-10-21\tp1$/.test(r.setup), 'the widget setup carries the lines and the dated default');
+    const strip = await p.evaluate(() => (document.querySelector('.now-strip') || {}).textContent || null);
+    assert(/Now\s*10:00/i.test(strip) && /Next train.*in 30 min.*Standup/.test(strip), `today has a Now / Next train strip: ${strip}`);
+    await p.clock.runFor(60000 * 5); await p.waitForTimeout(100);
+    const strip2 = await p.evaluate(() => document.querySelector('.now-strip').textContent);
+    assert(/10:05/.test(strip2) && /in 25 min/.test(strip2), `the strip keeps time: ${strip2}`);
+    await p.screenshot({ path: `${OUT}/now-strip-nyc.png` });
+    await press(p, 'ArrowRight');
+    assert(!(await p.$('.now-strip')), 'another day has no Now strip');
+    await p.click('.tab-btn[data-tab="add"]'); await p.clock.runFor(50);
+    const addLine = await p.$eval('#f-line', (s) => s.value);
+    assert(addLine === 'p1', `the Add form on 21 Oct defaults to Personal (${addLine})`);
+    await p.fill('#f-date', '2026-10-20'); await p.$eval('#f-date', (d) => d.dispatchEvent(new Event('change')));
+    assert(await p.$eval('#f-line', (s) => s.value) === 'w1', 'and back to the first line before it');
+    // Removing the rule sticks.
+    await p.evaluate(() => DB.store.set('lineFrom', null));
+    await p.reload(); await p.clock.runFor(400);
+    const gone = await p.evaluate(() => DB.store.state.settings.lineFrom);
+    assert(gone === null, 'switched off in Settings, it stays off');
+    await ctx.close();
+  }
+  for (const sys of ['flap', 'london']) {
+    const evs = [local('n', 'Grab cards at the card shop', T('2026-10-15T16:30:00+01:00'), T('2026-10-15T17:00:00+01:00'))];
+    const { ctx, p } = await open({ time: '2026-10-15T14:33:00+01:00', state: base(sys, evs), w: 390 });
+    const s = await p.evaluate(() => { const e = document.querySelector('.now-strip'); return { t: e.textContent, over: e.scrollWidth - e.clientWidth }; });
+    assert(/in 1 hr 57 min/.test(s.t) && s.over <= 0, `${sys}: Now strip counts down and fits: ${JSON.stringify(s)}`);
+    await p.screenshot({ path: `${OUT}/now-strip-${sys}.png` });
+    await ctx.close();
+  }
+
   console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'NO CONSOLE ERRORS');
   if (errors.length) process.exitCode = 1;
   await b.close();

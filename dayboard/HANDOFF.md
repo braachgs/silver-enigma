@@ -66,8 +66,11 @@ without its `<html>/<head>/<body>` wrapper.
 
 ## Open decisions (owner: Shawn)
 
-1. **Android widget: native, KWGT, or neither?** See
-   `docs/android-widget-decision.md`. Answer the work-profile question first.
+1. **Android widget:** native, built and installed (no work profile). It
+   matches the web app's lines after Settings → Android widget → Send lines
+   to widget. Unverified on a real phone: whether Android syncs Day Board's
+   private extended properties (the widget falls back to the lines the web
+   app sends, so it works either way until a newer event is re-lined).
 2. **Merge to the default branch?** Do this so the repo front page shows Day
    Board and Pages can deploy from the default branch.
 3. **Google sync:** working for the personal account. Next: assign that
@@ -86,6 +89,13 @@ without its `<html>/<head>/<body>` wrapper.
   work account.
 
 ## Working notes for the next session
+
+- The "Personal from 21 Oct 2026" default is a one-off set in `js/store.js`
+  (`lineFromSet`). Suites on today's clock opt out through `tests/clock.js`
+  (`window.DayBoardTest.noLineFrom`); `dates-test.js` covers it on a fixed
+  clock.
+- `tests/run.sh` starts its own server if none is running, and that server
+  keeps the output pipe open: run it with output to a file, not `| tail`.
 
 - This cloud environment can't reach `dl.google.com`, so Android builds have to
   run on GitHub Actions.

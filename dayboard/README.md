@@ -39,13 +39,18 @@ event boundaries:
 Changed characters flip, cascading left to right. On the platform display the
 rows are fixed slots like a real board: when an event departs, every row below
 flips up to the next one. Opening the display flips the whole board in from
-blank. The flap sound is off by default (Settings → Board → Flap sound).
+blank. The flap sound (Settings → Board → Flap sound, off by default) plays
+on the board as well as the platform display. Browsers only start sound
+after a tap, so it begins with your first tap once the app is open.
 
 ## Features
 
 - **Board**: live events first with a progress bar and minutes left, then
   departures with countdowns. Tap the date for a month picker. Tap a line
   bullet to filter to it, and tap the ◆ pill for all-day events.
+- **Now and next**: today's board shows the time now and the next departure
+  with its countdown (`NEXT TRAIN · IN 25 MIN`, then its line and title).
+  Tap it to open that event.
 - **Change day by swiping** anywhere on the Board or Lines tab: left for the
   next day, right for the previous one. The day follows your finger. A long
   or quick swipe moves a day, and a short one springs back. Subway boards
@@ -80,15 +85,27 @@ Add account). An event picks its line in this order:
 
 1. a line you picked for that one event (event sheet → Line)
 2. the line saved on the event by Day Board (events you created or re-lined)
-3. the line assigned to its **calendar** (Settings, per calendar)
-4. the **account's** line: the first account gets the first line (Work), the
+3. the **dated default** (Settings → Board → Default line from a date): from
+   that day on, events ride that line. It's set to Personal from 21 October
+   2026; switch it off or change the date and line there
+4. the line assigned to its **calendar** (Settings, per calendar)
+5. the **account's** line: the first account gets the first line (Work), the
    second gets Personal, and later accounts get the next free line
-5. the first line
+6. the first line
 
 So by default your work account is the **A / Victoria** line and your
 personal account is the **D / Circle** line. A shared calendar like "Family"
 can override that (say, **F / Metropolitan**), and any single event can be
 moved.
+
+## Android widget
+
+`dayboard-android/` is a native home-screen widget that reads the calendars
+synced to the phone. It can't see this app's lines by itself, so Settings →
+**Android widget → Send lines to widget** hands them over: the line codes
+and flap colours, which calendar and account rides which line, lines picked
+for single events, and the dated default. Send again after changing lines.
+Calendars from accounts that aren't in Day Board keep their own colour.
 
 ## Run it
 

@@ -34,11 +34,21 @@ object WidgetUpdater {
     fun widgetIds(context: Context): IntArray =
         AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, BoardWidget::class.java))
 
-    /** Line tiles: the calendar's code on the event's own colour (its calendar's, unless the event has one). */
-    fun lineOf(context: Context): (Event) -> Line {
+    /**
+     * Line tiles. With lines sent from Day Board, each event gets the line the
+     * web app gives it; otherwise (or for accounts Day Board doesn't have) the
+     * calendar's code on the event's own colour.
+     */
+    fun lineOf(context: Context, events: List<Event>, zone: ZoneId): (Event) -> Line {
         val names = CalendarSource.calendars(context).associate { it.id to it.name }
         val codes = HashMap<Long, String>()
-        return { e -> Line(codes.getOrPut(e.calendarId) { Settings.code(context, e.calendarId, names[e.calendarId] ?: "") }, e.color) }
+        val own = { e: Event -> Line(codes.getOrPut(e.calendarId) { Settings.code(context, e.calendarId, names[e.calendarId] ?: "") }, e.color) }
+        val config = Settings.lineConfig(context) ?: return own
+        val refs = CalendarSource.refs(context, events, zone)
+        return { e ->
+            val line = refs[CalendarSource.refKey(e)]?.let { config.resolve(it, e.start, zone) }
+            if (line != null) Line(line.code, line.color) else own(e)
+        }
     }
 
     /**
@@ -53,7 +63,7 @@ object WidgetUpdater {
         val allowed = CalendarSource.hasPermission(context)
         val list = events ?: CalendarSource.events(context, now, zone)
         val model = BoardBuilder(zone, hour12, Locale.getDefault()).build(
-            list, lineOf(context), now, layout.capacity,
+            list, lineOf(context, list, zone), now, layout.capacity,
             message = if (allowed) null else "TAP TO ALLOW CALENDAR ACCESS",
         )
         val bitmap = Bitmap.createBitmap(layout.w.toInt().coerceAtLeast(1), layout.h.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)

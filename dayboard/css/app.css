@@ -306,6 +306,39 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .hdr-day .date-btn { order: 2; flex-basis: 100%; }
 }
 
+/* Today only: NOW 10:42 AM, and the next departure with its countdown.
+   Two short columns, each a caption over its value, like a station sign. */
+.now-strip {
+  display: flex; align-items: stretch; gap: 16px;
+  margin: 0 18px 8px 20px;
+  padding: 9px 0;
+  border-top: 1px solid var(--chrome-line);
+  border-bottom: 1px solid var(--chrome-line);
+}
+.now-cap {
+  flex: none;
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--chrome-dim);
+}
+.now-time { flex: none; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; padding-right: 16px; border-right: 1px solid var(--chrome-line); }
+.now-clock { font-size: 22px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
+[data-system="london"] .now-clock { color: var(--chrome-ink); }
+.now-strip .fl-time { --cw: 14px; --ch: 24px; --cf: 19px; }
+.now-next {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
+  padding: 0; border: 0; background: none; color: inherit; text-align: left;
+}
+.now-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.now-next .bullet { --bs: 22px; }
+.now-next .tab { min-width: 34px; height: 20px; font-size: 10px; padding: 0 4px; }
+.now-next .ftile { min-width: 36px; height: 22px; font-size: 13px; }
+.now-next .badge { flex: none; }
+.now-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
+.now-title.dim { color: var(--chrome-dim); font-weight: 500; }
+.now-in { margin-left: auto; flex: none; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--accent); }
+[data-system="london"] .now-in { color: var(--chrome-ink); }
+
 .hdr-lines {
   display: flex;
   flex-wrap: wrap;
@@ -921,6 +954,10 @@ dialog.sheet[open] { animation: rise .22s ease-out; }
   font-size: 15px;
 }
 .set-row label { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.set-block { border-bottom: 1px solid var(--divider); }
+.set-block > .set-row { border-bottom: 0; }
+.set-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 0 0 12px; }
+.line-from-date { height: 36px; padding: 0 8px; border: 1.5px solid var(--divider); background: var(--field); color: inherit; font: inherit; font-size: 14px; }
 .segmented { display: inline-flex; border: 1.5px solid var(--ink); }
 .segmented button {
   min-width: 52px; height: 32px; padding: 0 10px;

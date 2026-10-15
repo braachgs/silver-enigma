@@ -372,6 +372,8 @@
       mapTitle: 'Route map',
       mapEmpty: 'No service to map for this day.',
       now: 'Now',
+      nextTrain: 'Next departure',
+      noMore: 'No more departures today',
       status: { none: 'No service', good: 'On time', minor: 'Delayed', severe: 'Delayed' },
       display: { ln: '', event: 'DESTINATION', min: 'REMARKS', allDay: 'ALL DAY', live: 'NOW' },
       sample: 'Sample day',

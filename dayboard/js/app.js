@@ -324,6 +324,7 @@
           }, h('span', { class: 'date-text' }, S.dateLong(dayStart(ui.date))), h('span', { class: 'chev' }, icon('chevron', 22))),
           backToToday()),
         headerActions(h('button', { class: 'icon-btn', 'aria-label': 'Platform display', onclick: openDisplay }, icon('display', 20)))),
+      isToday ? nowStrip(timed, Date.now()) : null,
       ui.picker ? datePicker() : null,
       badges.length || allDay.length
         ? h('div', { class: 'hdr-lines' }, badges,
@@ -334,6 +335,29 @@
         : null,
       ui.allDayOpen && allDay.length ? allDayPanel(allDay) : null,
       h('div', { class: 'colhead' }, h('span', {}, S.copy.departures), h('span', {}, isToday ? S.copy.timeCol : S.copy.timeColOther)));
+  }
+
+  // Today's board: the time now, and how long until the next departure (on
+  // any line, whatever the filter). Redrawn with the board every minute.
+  function nowStrip(timed, now) {
+    const S = sys();
+    const nxt = timed.filter((e) => e.start > now).sort(byStart)[0];
+    const label = S.time(now, h12());
+    const bt = S.layout === 'flap' ? S.boardTime(now, h12()).trim() : '';
+    const clock = S.layout === 'flap'
+      ? DB.flap.text(bt, bt.length, 'now|clock', 'board', { cls: 'fl-time', label })
+      : h('b', { class: 'now-clock' }, label);
+    const cap = S.copy.nextTrain || 'Next train';
+    const next = nxt
+      ? h('button', { class: 'now-next', onclick: () => openDetail(nxt.key), 'aria-label': `${cap}: ${nxt.title}, in ${durText(mins(now, nxt.start))}` },
+        h('span', { class: 'now-row' }, h('span', { class: 'now-cap' }, cap), h('b', { class: 'now-in' }, `in ${durText(mins(now, nxt.start))}`)),
+        h('span', { class: 'now-row' }, S.badge(nxt.lineObj), h('span', { class: 'now-title' }, nxt.title)))
+      : h('span', { class: 'now-next' },
+        h('span', { class: 'now-row' }, h('span', { class: 'now-cap' }, cap)),
+        h('span', { class: 'now-row' }, h('span', { class: 'now-title dim' }, S.copy.noMore || 'No more trains today')));
+    return h('div', { class: 'now-strip' },
+      h('span', { class: 'now-time' }, h('span', { class: 'now-cap' }, S.copy.now || 'Now'), clock),
+      next);
   }
 
   function allDayPanel(list) {
@@ -516,7 +540,11 @@
     list.append(boardFooter());
     DB.flap.end('board');
     // Let a flip cascade finish before the clock-driven redraw replaces it.
-    if (DB.flap.takeFlips('board')) flapBusyUntil = Date.now() + 1800;
+    const flipped = DB.flap.takeFlips('board');
+    if (flipped) {
+      flapBusyUntil = Date.now() + 1800;
+      if (store.state.settings.flapSound) clatter(flipped);
+    }
 
     return h('div', { class: 'board-view' }, header, list);
   }
@@ -798,10 +826,13 @@
     let dest = editing ? destFor(editing) : (dests.find((d) => d.value === st.settings.lastDest) || dests[0]).value;
     let lineTouched = !!editing;
 
+    // The line a new event would get by default: its calendar's, or the
+    // dated default (Settings → Board) once the form's day reaches it.
     const lineForDest = (v) => {
       const d = dests.find((x) => x.value === v);
-      if (!d || !d.email) return st.lines[0].id;
-      return store.resolveLine({ key: '', source: 'google', email: d.email, calId: d.calId }).id;
+      const at = /^\d{4}-\d{2}-\d{2}$/.test(date.value) ? dayStart(date.value) : start;
+      if (!d || !d.email) return store.resolveLine({ key: '', source: 'local', start: at }).id;
+      return store.resolveLine({ key: '', source: 'google', email: d.email, calId: d.calId, start: at }).id;
     };
 
     const title = h('input', {
@@ -851,6 +882,7 @@
     };
     date.addEventListener('input', paintRel);
     date.addEventListener('change', paintRel);
+    date.addEventListener('change', () => { if (!lineTouched) { lineSel.value = lineForDest(dest); paintBadge(); } });
     paintRel();
     addRefresh = paintRel;
     const timeRow = h('div', { class: 'field' }, h('label', { for: 'f-date' }, timeLabel, relCap), h('span', { class: 'field-pair' }, date, time));
@@ -1197,6 +1229,40 @@
       h('input', { type: 'checkbox', class: 'switch', id, checked, onchange: (e) => onChange(e.target.checked) }));
   }
 
+  // Hands the lines to the Day Board widget app through an Android intent
+  // link (base64url text, see store.widgetSetup). Elsewhere it does nothing.
+  function sendToWidget() {
+    const bytes = new TextEncoder().encode(store.widgetSetup());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    const d = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    if (!/Android/i.test(navigator.userAgent)) { toast('Open Day Board on your Android phone to send lines to the widget.'); return; }
+    location.href = `intent://lines?d=${d}#Intent;scheme=dayboard;package=com.braachgs.dayboard;end`;
+  }
+
+  // "From Wed, Oct 21, events ride Personal": a dated default line that beats
+  // calendar and account lines, but not a line picked for an event itself.
+  function lineFromRow(st) {
+    const lf = st.settings.lineFrom;
+    const valid = lf && store.lineById(lf.line);
+    const id = `t-${U.uid()}`;
+    const fallback = () => (st.lines.find((l) => l.name.toLowerCase() === 'personal') || st.lines[0]).id;
+    return h('div', { class: 'set-block' },
+      h('div', { class: 'set-row' },
+        h('label', { for: id }, h('span', {}, 'Default line from a date'),
+          h('small', { class: 'help' }, 'From that day on, events take this line unless you picked one for them. Before it, calendar and account lines apply.')),
+        h('input', {
+          type: 'checkbox', class: 'switch', id, checked: !!valid,
+          onchange: (e) => store.set('lineFrom', e.target.checked ? { date: todayKey(), line: fallback() } : null),
+        })),
+      valid ? h('div', { class: 'set-sub' },
+        h('input', {
+          type: 'date', class: 'line-from-date', 'aria-label': 'Default line starts on', value: lf.date, required: true,
+          onchange: (e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) store.set('lineFrom', { ...lf, date: e.target.value }); },
+        }),
+        lineSelect(lf.line, (v) => store.set('lineFrom', { ...lf, line: v }), false, 'Default line from that date')) : null);
+  }
+
   function sysPreview(x) {
     const demo = store.state.lines.slice(0, x.logo ? 2 : 3);
     return h('span', { class: `sys-preview sys-${x.id}` },
@@ -1280,12 +1346,20 @@
               'aria-pressed': String(st.settings.hour12 === v),
               onclick: () => { store.set('hour12', v); refreshSheet(true); },
             }, label)))),
+        lineFromRow(st),
         toggleRow('Show departed events', st.settings.showDeparted, (v) => { ui.departedOpen = null; store.set('showDeparted', v); }),
         toggleRow('Spoken announcements', st.settings.announce, (v) => { store.set('announce', v); if (v) testAnnouncement(); },
           'Calls out your next event five minutes ahead and as it starts, while Day Board is open.'),
-        st.system === 'flap' ? toggleRow('Flap sound on the platform display', st.settings.flapSound,
-          (v) => { store.set('flapSound', v); if (v) ensureAudio(); }) : null,
+        st.system === 'flap' ? toggleRow('Flap sound', st.settings.flapSound,
+          (v) => { store.set('flapSound', v); if (v) ensureAudio(); },
+          'The clatter of flaps turning, on the board and the platform display.') : null,
         toggleRow('Sample day when the board is empty', st.settings.sample, (v) => store.set('sample', v))),
+
+      h('section', { class: 'set-section' },
+        h('h3', { class: 'cap' }, 'Android widget'),
+        h('p', { class: 'help' }, 'The home-screen widget can’t see this app’s lines on its own. Send them over to give it the same codes and colours, and send again after you change lines.'),
+        h('div', { class: 'detail-actions' },
+          h('button', { class: 'btn-outline', onclick: sendToWidget }, icon('display', 16), 'Send lines to widget'))),
 
       h('section', { class: 'set-section' },
         h('h3', { class: 'cap' }, 'Data'),
@@ -1662,6 +1736,11 @@
       else if (e.key === 't') goDate(todayKey());
     });
     initSwipe(document.getElementById('app'));
+    // Browsers only start sound from a tap or key press: the first one after
+    // the app opens wakes it for the flap clatter.
+    const wakeAudio = () => { if (store.state.settings.flapSound) ensureAudio(); };
+    document.addEventListener('pointerdown', wakeAudio, true);
+    document.addEventListener('keydown', wakeAudio, true);
     let resizeTimer = null;
     let lastWidth = window.innerWidth;
     window.addEventListener('resize', () => {
