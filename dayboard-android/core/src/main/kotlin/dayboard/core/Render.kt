@@ -30,7 +30,7 @@ object Palette {
     const val CELL_BOTTOM = 0xFF1B1B1B.toInt()
     const val LIVE_TOP = 0xFF31904A.toInt()
     const val LIVE_BOTTOM = 0xFF22683A.toInt()
-    const val SPLIT = 0xD9000000.toInt()
+    const val SPLIT = 0x8C000000.toInt()
     const val TILE_SPLIT = 0x59000000
 
     fun ink(tone: Tone): Int = when (tone) {
@@ -62,7 +62,7 @@ class BoardLayout(val w: Float, val h: Float, val d: Float, val hour12: Boolean)
     val headerH = (if (compact) 20 else 24) * d
     val ruleY = pad + headerH
     val ruleH = 2 * d
-    val gap = max(1f, 1.5f * d)
+    val gap = max(1f, 1f * d)
     val sectionGap = 6 * d
     val contentW = w - 2 * pad
     val timeCells = if (hour12) 6 else 5
@@ -115,7 +115,7 @@ class BoardLayout(val w: Float, val h: Float, val d: Float, val hour12: Boolean)
         return floor((area + rowGap) / (rowH + rowGap)).toInt()
     }
 
-    val fontSize get() = ch * 0.78f
+    val fontSize get() = ch * 0.82f
     val rowH get() = if (oneLine) ch else ch * 2 + lineGap
 
     /** How many rows fit; the board always shows at least one. */
@@ -127,7 +127,7 @@ class BoardLayout(val w: Float, val h: Float, val d: Float, val hour12: Boolean)
 
     companion object {
         /** Cell height : width, as the web app's flaps. */
-        const val ASPECT = 1.58f
+        const val ASPECT = 1.9f
         /** Line tile width, in cells. */
         const val TILE = 3.3f
     }
@@ -174,7 +174,7 @@ class BoardRenderer(private val cornerRadius: Float = 16f) {
             l.fontSize * 0.86f, Palette.tileInk(row.line.color), Align.CENTER, 0.06f)
         p.rect(l.pad, y + l.ch / 2 - d / 2, l.tileW, max(1f, d * 0.75f), Palette.TILE_SPLIT)
 
-        val timeInk = if (row.tomorrow) Palette.DIM else Palette.INK
+        val timeInk = if (row.tomorrow) Palette.ink(Tone.INFO) else Palette.INK
         cells(p, row.time, l.timeX, y, l.timeCells, l, timeInk)
 
         val live = row.remark.tone == Tone.LIVE
@@ -183,7 +183,7 @@ class BoardRenderer(private val cornerRadius: Float = 16f) {
         val ty = if (l.oneLine) y else y + l.ch + l.lineGap
         val n = l.titleCells
         if (Flap.legible(row.event.title)) {
-            cells(p, Flap.fit(row.event.title, n), l.titleX, ty, n, l, if (row.tomorrow) Palette.DIM else Palette.INK)
+            cells(p, Flap.fit(row.event.title, n), l.titleX, ty, n, l, if (row.tomorrow) Palette.ink(Tone.INFO) else Palette.INK)
         } else {
             // Non-Latin titles and emoji as plain text: flaps would blank them out.
             val size = l.fontSize
@@ -205,7 +205,7 @@ class BoardRenderer(private val cornerRadius: Float = 16f) {
             p.rect(cx, y + l.ch / 2, l.cw, r, bottom)
             val c = text.getOrNull(i)
             if (c != null && c != ' ') p.text(c.toString(), cx + l.cw / 2, baseline, l.fontSize, ink, Align.CENTER)
-            p.rect(cx, y + l.ch / 2 - d * 0.45f, l.cw, max(1f, d * 0.9f), Palette.SPLIT)
+            p.rect(cx, y + l.ch / 2 - d * 0.3f, l.cw, max(1f, d * 0.6f), Palette.SPLIT)
         }
     }
 

@@ -24,6 +24,7 @@ class PreviewTest {
     @Test fun previews() {
         val morning = "2026-10-15T09:52+01:00[Europe/London]"
         preview("4x2", 300, 150, morning)
+        preview("phone-5x3", 380, 320, morning)
         preview("4x3", 300, 230, morning)
         preview("4x4", 300, 310, morning)
         preview("5x2", 390, 150, morning)
