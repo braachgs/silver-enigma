@@ -17,6 +17,14 @@ import java.util.concurrent.Executors
 
 internal val worker = Executors.newSingleThreadExecutor()
 
+internal fun updateSafely(app: Context, scheduleContentJob: Boolean = true) {
+    try {
+        WidgetUpdater.updateAll(app, scheduleContentJob)
+    } catch (e: Exception) {
+        Log.e("DayBoard", "widget update failed", e)
+    }
+}
+
 /** Redraws off the main thread, keeping the receiver alive until it's done. */
 internal fun BroadcastReceiver.updateWidgetsAsync(context: Context) {
     val pending = goAsync()

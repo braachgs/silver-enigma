@@ -55,13 +55,20 @@ class BoardBuilder(
     /** "10:30A" style: five cells plus an A/P cell on a 12-hour clock, "10:30" on a 24-hour one. */
     fun boardTime(t: Long): String {
         val z = Instant.ofEpochMilli(t).atZone(zone)
-        if (!hour12) return "%02d:%02d".format(z.hour, z.minute)
+        if (!hour12) return String.format(Locale.ROOT, "%02d:%02d", z.hour, z.minute)
         val h = if (z.hour % 12 == 0) 12 else z.hour % 12
-        return "$h:%02d".format(z.minute).padStart(5, ' ') + if (z.hour < 12) "A" else "P"
+        return String.format(Locale.ROOT, "%d:%02d", h, z.minute).padStart(5, ' ') + if (z.hour < 12) "A" else "P"
     }
 
-    fun dayLabel(now: Long): String =
-        Flap.clean(dayFormat.format(Instant.ofEpochMilli(now).atZone(zone)).replace(".", ""))
+    fun dayLabel(now: Long): String {
+        val day = Instant.ofEpochMilli(now).atZone(zone)
+        val raw = dayFormat.format(day).replace(".", "")
+        val label = Flap.clean(raw).trim()
+        // A label with characters the flaps can't show falls back to English.
+        val whole = label.replace(" ", "").length == raw.replace(Regex("\\s"), "").length
+        return if (whole) label
+        else Flap.clean(DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK).format(day))
+    }
 
     fun build(events: List<Event>, lineOf: (Event) -> Line, now: Long, maxRows: Int, message: String? = null): BoardModel {
         val today = dayStart(now)
@@ -81,11 +88,14 @@ class BoardBuilder(
         }
         for (e in tomorrows) {
             if (rows.size >= maxRows) break
-            rows += Row(e, lineOf(e), boardTime(e.start), Remarks.TOMORROW, tomorrow = true)
+            // Just before midnight, a departure just after it counts down as usual.
+            val r = if (e.start - now <= 15 * MINUTE) Remarks.of(e.start, e.end, now) else Remarks.TOMORROW
+            rows += Row(e, lineOf(e), boardTime(e.start), r, tomorrow = true)
         }
         val allDay = events.filter { it.allDay && it.start < tomorrow && it.end > today }.sortedWith(order)
 
-        val changes = todays.mapNotNull { Remarks.nextChange(it.start, it.end, now) } + tomorrow
+        val soon = tomorrows.filter { it.start - 15 * MINUTE < tomorrow }
+        val changes = (todays + soon).mapNotNull { Remarks.nextChange(it.start, it.end, now) } + tomorrow
         val emptyText = when {
             message != null -> message
             rows.isNotEmpty() -> null

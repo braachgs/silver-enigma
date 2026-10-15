@@ -29,7 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      DAYBOARD_KEYSTORE_PASSWORD: ${{ secrets.DAYBOARD_KEYSTORE_PASSWORD }}
+      # Only whether the secret exists; the secret itself goes to the steps that need it.
+      HAS_KEY: ${{ secrets.DAYBOARD_KEYSTORE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +47,9 @@ jobs:
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Create the signing key (first signed build only)
-        if: env.DAYBOARD_KEYSTORE_PASSWORD != '' && hashFiles('dayboard-android/app/release.p12') == ''
+        if: env.HAS_KEY == 'true' && hashFiles('dayboard-android/app/release.p12') == ''
+        env:
+          DAYBOARD_KEYSTORE_PASSWORD: ${{ secrets.DAYBOARD_KEYSTORE_PASSWORD }}
         run: |
           keytool -genkeypair -storetype PKCS12 -keystore dayboard-android/app/release.p12 \
             -alias dayboard -keyalg RSA -keysize 3072 -validity 36500 -dname "CN=Day Board widget" \
@@ -65,6 +68,8 @@ jobs:
         run: gradle -p dayboard-android/core test --console=plain
 
       - name: Build the APK
+        env:
+          DAYBOARD_KEYSTORE_PASSWORD: ${{ secrets.DAYBOARD_KEYSTORE_PASSWORD }}
         run: gradle -p dayboard-android :app:assembleRelease -PversionCode=${{ github.run_number }} --console=plain
 
       - name: Keep the APK and previews with this run
@@ -76,7 +81,7 @@ jobs:
             dayboard-android/core/build/previews/*.png
 
       - name: Publish the APK
-        if: env.DAYBOARD_KEYSTORE_PASSWORD != ''
+        if: env.HAS_KEY == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -89,5 +94,5 @@ jobs:
             --latest
 
       - name: Say why nothing was published
-        if: env.DAYBOARD_KEYSTORE_PASSWORD == ''
+        if: env.HAS_KEY != 'true'
         run: echo "::warning::Built and tested, not published. Add the DAYBOARD_KEYSTORE_PASSWORD secret to publish signed APKs."

@@ -41,7 +41,7 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private var preview: ImageView? = null
     private val main = Handler(Looper.getMainLooper())
-    private val pushToWidgets = Runnable { worker.execute { WidgetUpdater.updateAll(applicationContext) } }
+    private val pushToWidgets = Runnable { worker.execute { updateSafely(applicationContext) } }
 
     private val flap by lazy { WidgetUpdater.typeface(this) }
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -61,6 +61,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         build()
+        // Android sends nothing when calendar access is granted in Settings: refresh the widgets here.
+        pushToWidgets.run()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
@@ -196,8 +198,12 @@ class MainActivity : Activity() {
 
     private fun askForCalendar() {
         if (checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED) return
-        val askedBefore = getSharedPreferences("app", MODE_PRIVATE).getBoolean("asked", false)
-        if (askedBefore && !shouldShowRequestPermissionRationale(Manifest.permission.READ_CALENDAR)) {
+        val prefs = getSharedPreferences("app", MODE_PRIVATE)
+        // Android stops asking only after a second denial; a dismissed dialog doesn't count.
+        if (shouldShowRequestPermissionRationale(Manifest.permission.READ_CALENDAR)) prefs.edit().putBoolean("denied", true).apply()
+        val blocked = prefs.getBoolean("denied", false) && prefs.getBoolean("asked", false) &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.READ_CALENDAR)
+        if (blocked) {
             // Android won't ask again: open this app's settings page instead.
             Toast.makeText(this, "Tap Permissions, then Calendar, then Allow.", Toast.LENGTH_LONG).show()
             startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))

@@ -103,4 +103,16 @@ class LogicTest {
             }
         }
     }
+
+    @Test fun aDepartureJustAfterMidnightCountsDown() {
+        val b = BoardBuilder(LONDON, hour12 = true, Locale.UK)
+        val e = Event(99, Samples.WORK, "Night bus", null, t("2026-10-16T00:05+01:00[Europe/London]"), t("2026-10-16T00:35+01:00[Europe/London]"), false, 0)
+        val early = b.build(listOf(e), Samples.lineOf, t("2026-10-15T23:00+01:00[Europe/London]"), 3)
+        assertEquals("TOMORROW", early.rows.single().remark.text)
+        assertEquals(t("2026-10-15T23:50+01:00[Europe/London]"), early.nextChange)
+        val close = b.build(listOf(e), Samples.lineOf, t("2026-10-15T23:55+01:00[Europe/London]"), 3)
+        assertEquals("BOARDING", close.rows.single().remark.text)
+        assertEquals(" 9:05P", BoardBuilder(LONDON, true, Locale.forLanguageTag("ar-EG")).boardTime(t("2026-10-15T21:05+01:00[Europe/London]")))
+        assertEquals("THU 15 OCT", BoardBuilder(LONDON, true, Locale.JAPAN).dayLabel(t("2026-10-15T09:00+01:00[Europe/London]")))
+    }
 }
