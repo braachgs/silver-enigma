@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Day Board Widget</string>
+    <string name="widget_name">Day Board departures</string>
+    <string name="widget_description">Your next calendar events as a split-flap departure board</string>
+</resources>

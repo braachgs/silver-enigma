@@ -1,0 +1,75 @@
+# Builds the Day Board Android widget (dayboard-android/) and publishes the
+# APK at a fixed link:
+#   https://github.com/braachgs/silver-enigma/releases/download/widget/DayBoard-widget.apk
+# Publishing needs the DAYBOARD_KEYSTORE_PASSWORD secret (the password of
+# dayboard-android/app/release.p12), so every build is signed with the same
+# key and installs as an update. Without it, the build is only checked.
+name: Day Board widget (Android)
+
+on:
+  push:
+    paths:
+      - 'dayboard-android/**'
+      - '.github/workflows/dayboard-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dayboard-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DAYBOARD_KEYSTORE_PASSWORD: ${{ secrets.DAYBOARD_KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android 15 SDK platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Test the board logic and layout
+        run: gradle -p dayboard-android/core test --console=plain
+
+      - name: Build the APK
+        run: gradle -p dayboard-android :app:assembleRelease -PversionCode=${{ github.run_number }} --console=plain
+
+      - name: Keep the APK and previews with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: day-board-widget-${{ github.run_number }}
+          path: |
+            dayboard-android/app/build/outputs/apk/release/*.apk
+            dayboard-android/core/build/previews/*.png
+
+      - name: Publish the APK
+        if: env.DAYBOARD_KEYSTORE_PASSWORD != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp dayboard-android/app/build/outputs/apk/release/app-release.apk DayBoard-widget.apk
+          gh release delete widget --cleanup-tag --yes || true
+          gh release create widget DayBoard-widget.apk \
+            --target "$GITHUB_SHA" \
+            --title "Day Board widget 1.${{ github.run_number }}" \
+            --notes "Open this page on your Android phone and tap DayBoard-widget.apk to install or update. Built from ${GITHUB_SHA::7}." \
+            --latest
+
+      - name: Say why nothing was published
+        if: env.DAYBOARD_KEYSTORE_PASSWORD == ''
+        run: echo "::warning::Built and tested, not published. Add the DAYBOARD_KEYSTORE_PASSWORD secret to publish signed APKs."

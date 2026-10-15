@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The board is one bitmap drawn by dayboard.core.BoardRenderer; the clock
+     over its header corner is a TextClock, so it ticks without waking the app. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/board"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/widget_description"
+        android:scaleType="fitXY" />
+
+    <TextClock
+        android:id="@+id/clock"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/header_h"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="@dimen/pad"
+        android:layout_marginEnd="@dimen/pad"
+        android:paddingEnd="2dp"
+        android:fontFamily="sans-serif-condensed"
+        android:format12Hour="h:mm"
+        android:format24Hour="HH:mm"
+        android:gravity="center_vertical"
+        android:includeFontPadding="false"
+        android:textColor="@color/amber"
+        android:textSize="15dp"
+        android:textStyle="bold" />
+</FrameLayout>
