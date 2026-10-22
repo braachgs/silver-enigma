@@ -23,6 +23,8 @@ class LineConfigTest {
         "E\trep9_20261016T040000Z\tt1",
         "F\t2026-10-21\tp1",
     ).joinToString("\n")
+    // What v9 sends: 21 Oct only, the personal Gmail only.
+    private val oneDay = LineConfig.parse(text.replace("F\t2026-10-21\tp1", "F\t2026-10-21\tp1\t2026-10-21\tme@gmail.com"))!!
     private val cfg = LineConfig.parse(text)!!
 
     private fun ref(cal: String = "me@gmail.com", id: String? = "x", start: Long = at(2026, 10, 15), allDay: Boolean = false, saved: String? = null, savedName: String? = null) =
@@ -32,7 +34,8 @@ class LineConfigTest {
         assertEquals(listOf("WRK", "PRS", "SCL", "TRV"), cfg.lines.map { it.code })
         assertEquals(0xFFF2B705.toInt(), cfg.lines[1].color)
         assertEquals(LocalDate.of(2026, 10, 21), cfg.from)
-        assertEquals(text.replace("Me@Gmail.com", "me@gmail.com"), LineConfig.parse(cfg.encode())!!.encode())
+        assertEquals(text.replace("Me@Gmail.com", "me@gmail.com") + "\t\t", LineConfig.parse(cfg.encode())!!.encode())
+        assertEquals(oneDay.encode(), LineConfig.parse(oneDay.encode())!!.encode())
         assertNull(LineConfig.parse("hello"))
         assertNull(LineConfig.parse("DB1\nA\tx\ty"))
     }
@@ -55,6 +58,16 @@ class LineConfigTest {
         assertEquals("SCL", cfg.resolve(ref(cal = fam), at(2026, 10, 20, 23), zone)!!.code)
         assertEquals("PRS", cfg.resolve(ref(cal = fam), at(2026, 10, 21, 0), zone)!!.code)
         assertEquals("PRS", cfg.resolve(ref(), at(2026, 12, 1), zone)!!.code)
+    }
+
+    @Test fun aDatedLineCanEndAndBelongToOneAccount() {
+        val fam = "family123@group.calendar.google.com"
+        assertEquals("SCL", oneDay.resolve(ref(cal = fam), at(2026, 10, 20, 23), zone)!!.code)
+        assertEquals("PRS", oneDay.resolve(ref(cal = fam), at(2026, 10, 21, 0), zone)!!.code)
+        assertEquals("PRS", oneDay.resolve(ref(cal = fam), at(2026, 10, 21, 23), zone)!!.code)
+        assertEquals("SCL", oneDay.resolve(ref(cal = fam), at(2026, 10, 22, 0), zone)!!.code)
+        val work = LineConfig.parse(text.replace("F\t2026-10-21\tp1", "F\t2026-10-21\tp1\t2026-10-21\tme@work.com") + "\nA\tme@work.com\tw1")!!
+        assertEquals("SCL", work.resolve(ref(cal = fam), at(2026, 10, 21, 12), zone)!!.code)
     }
 
     @Test fun unknownAccountsKeepTheCalendarLook() {

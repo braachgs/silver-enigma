@@ -425,14 +425,28 @@ const FAR = 4102444800000; // token expiry in 2100
       { ...local('own', 'Party', T('2026-10-22T19:00:00+01:00'), T('2026-10-22T22:00:00+01:00')), line: 's1' },
       local('next', 'Standup', T('2026-10-20T10:30:00+01:00'), T('2026-10-20T10:45:00+01:00')),
     ];
-    const { ctx, p } = await open({ time: '2026-10-20T10:00:00+01:00', state: { ...base('nyc', evs), lines } });
+    const cal = (id, name) => ({ id, name, color: '#888', role: 'owner', primary: true, enabled: true, line: null });
+    const accounts = [
+      { email: 'me@gmail.com', defaultLine: 'w1', write: true, calendars: [cal('me@gmail.com', 'Me')] },
+      { email: 'me@work.com', defaultLine: 'w1', write: true, calendars: [cal('me@work.com', 'Work')] },
+    ];
+    // The v8 shape: open-ended, every account.
+    const old = { date: '2026-10-21', line: 'p1' };
+    const { ctx, p } = await open({ time: '2026-10-20T10:00:00+01:00', state: { ...base('nyc', evs, { settings: { lineFrom: old, lineFromSet: true } }), lines, accounts } });
     const r = await p.evaluate(() => {
+      const g = (email, start) => DB.store.resolveLine({ key: 'x', source: 'google', email, calId: email, start: new Date(start).getTime() }).name;
       const of = (id) => DB.store.resolveLine({ ...DB.store.state.localEvents.find((e) => e.id === id), key: id, source: 'local' }).name;
-      return { tue: of('tue'), wed: of('wed'), own: of('own'), from: DB.store.state.settings.lineFrom, setup: DB.store.widgetSetup() };
+      return {
+        from: DB.store.state.settings.lineFrom,
+        gmail20: g('me@gmail.com', '2026-10-20T23:30:00+01:00'), gmail21: g('me@gmail.com', '2026-10-21T00:30:00+01:00'),
+        gmail22: g('me@gmail.com', '2026-10-22T00:30:00+01:00'), work21: g('me@work.com', '2026-10-21T12:00:00+01:00'),
+        local21: of('wed'), own: of('own'), setup: DB.store.widgetSetup(),
+      };
     });
-    assert(r.tue === 'Work' && r.wed === 'Personal' && r.own === 'Social', `21 Oct on rides Personal (local midnight is the cut); a line picked for an event wins: ${JSON.stringify(r)}`);
-    assert(r.from && r.from.date === '2026-10-21' && r.from.line === 'p1', 'the dated default is set once, on Personal');
-    assert(/^DB1\nL\tw1\tWork\tWRK\t[0-9A-F]{6}\n/.test(r.setup) && /\nF\t2026-10-21\tp1$/.test(r.setup), 'the widget setup carries the lines and the dated default');
+    assert(r.from.until === '2026-10-21' && r.from.email === 'me@gmail.com', `the v8 rule narrows to 21 Oct on the personal Gmail: ${JSON.stringify(r.from)}`);
+    assert(r.gmail20 === 'Work' && r.gmail21 === 'Personal' && r.gmail22 === 'Work', `only 21 Oct rides Personal (local midnight both ends): ${r.gmail20}/${r.gmail21}/${r.gmail22}`);
+    assert(r.work21 === 'Work' && r.local21 === 'Work' && r.own === 'Social', `the work account and local events keep their lines; a picked line wins: ${r.work21}/${r.local21}/${r.own}`);
+    assert(/^DB1\nL\tw1\tWork\tWRK\t[0-9A-F]{6}\n/.test(r.setup) && /\nF\t2026-10-21\tp1\t2026-10-21\tme@gmail\.com$/.test(r.setup), 'the widget setup carries the dated line with its end and account');
     const strip = await p.evaluate(() => (document.querySelector('.now-strip') || {}).textContent || null);
     assert(/Now\s*10:00/i.test(strip) && /Next train.*in 30 min.*Standup/.test(strip), `today has a Now / Next train strip: ${strip}`);
     await p.clock.runFor(60000 * 5); await p.waitForTimeout(100);
@@ -441,12 +455,24 @@ const FAR = 4102444800000; // token expiry in 2100
     await p.screenshot({ path: `${OUT}/now-strip-nyc.png` });
     await press(p, 'ArrowRight');
     assert(!(await p.$('.now-strip')), 'another day has no Now strip');
+    // An unscoped, open-ended dated line also steers the Add form.
+    await p.evaluate(() => DB.store.set('lineFrom', { date: '2026-10-21', until: null, email: null, line: 'p1' }));
     await p.click('.tab-btn[data-tab="add"]'); await p.clock.runFor(50);
     const addLine = await p.$eval('#f-line', (s) => s.value);
-    assert(addLine === 'p1', `the Add form on 21 Oct defaults to Personal (${addLine})`);
+    assert(addLine === 'p1', `the Add form on 21 Oct defaults to the dated line (${addLine})`);
     await p.fill('#f-date', '2026-10-20'); await p.$eval('#f-date', (d) => d.dispatchEvent(new Event('change')));
     assert(await p.$eval('#f-line', (s) => s.value) === 'w1', 'and back to the first line before it');
-    // Removing the rule sticks.
+    // Settings shows the range and the account.
+    await p.evaluate(() => DB.store.set('lineFrom', { date: '2026-10-21', until: '2026-10-21', email: 'me@gmail.com', line: 'p1' }));
+    await p.click('.tab-btn[data-tab="board"]'); await p.clock.runFor(50);
+    await p.click('[aria-label="Settings"]'); await p.clock.runFor(400);
+    const ui = await p.evaluate(() => ({
+      to: document.querySelector('[aria-label^="Dated line ends"]').value,
+      who: document.querySelector('[aria-label="Dated line applies to"]').value,
+    }));
+    assert(ui.to === '2026-10-21' && ui.who === 'me@gmail.com', `Settings shows the dated line's end and account: ${JSON.stringify(ui)}`);
+    await (await p.$('.set-block')).screenshot({ path: `${OUT}/dated-line-settings.png` });
+    // Removing the rule sticks, and isn't re-created.
     await p.evaluate(() => DB.store.set('lineFrom', null));
     await p.reload(); await p.clock.runFor(400);
     const gone = await p.evaluate(() => DB.store.state.settings.lineFrom);

@@ -36,10 +36,13 @@ data class EventRef(
  *     A  email  lineId               an account's line
  *     C  email  calendarId  lineId   a calendar's line
  *     E  googleEventId  lineId       a line picked or saved for one event
- *     F  2026-10-21  lineId          events from this day on default to this line
+ *     F  2026-10-21  lineId  [until]  [email]
+ *                                    events from this day (to `until`, inclusive;
+ *                                    blank: no end) default to this line, for
+ *                                    one account if `email` is set
  *
  * Lines resolve as the web app's store.resolveLine: the event's own line,
- * then the dated default, then its calendar's, then its account's.
+ * then the dated line, then its calendar's, then its account's.
  */
 class LineConfig(
     val lines: List<LineDef>,
@@ -48,6 +51,8 @@ class LineConfig(
     private val events: Map<String, String>,
     val from: LocalDate?,
     private val fromLine: String?,
+    val until: LocalDate? = null,
+    private val fromAccount: String? = null,
 ) {
     private val byId = lines.associateBy { it.id }
     private val byName = lines.associateBy { it.name.lowercase(Locale.ROOT) }
@@ -60,7 +65,10 @@ class LineConfig(
         if (account !in accounts && calendars.keys.none { it.first == account }) return null
         instanceIds(ref).firstNotNullOfOrNull { line(events[it]) }?.let { return it }
         (line(ref.savedLine) ?: ref.savedLineName?.let { byName[it.lowercase(Locale.ROOT)] })?.let { return it }
-        if (from != null && !Instant.ofEpochMilli(start).atZone(zone).toLocalDate().isBefore(from)) line(fromLine)?.let { return it }
+        if (from != null && (fromAccount == null || fromAccount == account)) {
+            val day = Instant.ofEpochMilli(start).atZone(zone).toLocalDate()
+            if (!day.isBefore(from) && (until == null || !day.isAfter(until))) line(fromLine)?.let { return it }
+        }
         ref.calendarIds.firstNotNullOfOrNull { line(calendars[account to it]) }?.let { return it }
         return line(accounts[account]) ?: lines.firstOrNull()
     }
@@ -79,7 +87,7 @@ class LineConfig(
         for ((a, l) in accounts) append("\nA\t$a\t$l")
         for ((k, l) in calendars) append("\nC\t${k.first}\t${k.second}\t$l")
         for ((e, l) in events) append("\nE\t$e\t$l")
-        if (from != null && fromLine != null) append("\nF\t$from\t$fromLine")
+        if (from != null && fromLine != null) append("\nF\t$from\t$fromLine\t${until ?: ""}\t${fromAccount ?: ""}")
     }
 
     companion object {
@@ -97,6 +105,8 @@ class LineConfig(
             val events = LinkedHashMap<String, String>()
             var from: LocalDate? = null
             var fromLine: String? = null
+            var until: LocalDate? = null
+            var fromAccount: String? = null
             for (row in rows.drop(1)) {
                 val f = row.split('\t')
                 when (f[0]) {
@@ -111,11 +121,13 @@ class LineConfig(
                     "F" -> if (f.size >= 3) {
                         from = runCatching { LocalDate.parse(f[1]) }.getOrNull()
                         fromLine = f[2]
+                        until = f.getOrNull(3)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        fromAccount = f.getOrNull(4)?.lowercase(Locale.ROOT)?.ifBlank { null }
                     }
                 }
             }
             if (lines.isEmpty()) return null
-            return LineConfig(lines, accounts, calendars, events, from, fromLine)
+            return LineConfig(lines, accounts, calendars, events, from, fromLine, until, fromAccount)
         }
     }
 }

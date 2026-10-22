@@ -90,10 +90,9 @@ without its `<html>/<head>/<body>` wrapper.
 
 ## Working notes for the next session
 
-- The "Personal from 21 Oct 2026" default is a one-off set in `js/store.js`
-  (`lineFromSet`). Suites on today's clock opt out through `tests/clock.js`
-  (`window.DayBoardTest.noLineFrom`); `dates-test.js` covers it on a fixed
-  clock.
+- Dated line (`settings.lineFrom`: date, until, email, line) sits above
+  calendar and account lines. v9 narrowed the v8 one-off ("Personal from
+  21 Oct", open-ended, all accounts) to 21 Oct on the personal Gmail only.
 - `tests/run.sh` starts its own server if none is running, and that server
   keeps the output pipe open: run it with output to a file, not `| tail`.
 

@@ -60,8 +60,9 @@
         sample: true,
         clientId: '',
         lastDest: 'local',
-        // From this day on, events without a line of their own default to
-        // this line, ahead of calendar and account lines: { date, line }.
+        // A dated line: events from `date` to `until` (inclusive; no `until`
+        // means no end) default to `line`, ahead of calendar and account
+        // lines. `email` limits it to one Google account. { date, until, email, line }
         lineFrom: null,
       },
     };
@@ -74,12 +75,12 @@
     : base;
   if (!Array.isArray(state.lines) || !state.lines.length) state.lines = base.lines;
   if (!DB.SYSTEMS[state.system]) state.system = 'nyc';
-  // One-off: everything from Wed 21 Oct 2026 rides the Personal line. Set once
-  // (Settings can change or remove it, and that choice sticks).
-  if (!state.settings.lineFromSet && !(window.DayBoardTest || {}).noLineFrom) { // tests on today's clock opt out
-    const personal = state.lines.find((l) => l.name.toLowerCase() === 'personal');
-    if (personal) state.settings.lineFrom = { date: '2026-10-21', line: personal.id };
-    state.settings.lineFromSet = true;
+  // The first dated line (set in v8) meant "Wed 21 Oct 2026, personal Gmail
+  // only" but ran open-ended across every account: narrow it once.
+  const lf0 = state.settings.lineFrom;
+  if (lf0 && lf0.date === '2026-10-21' && !('until' in lf0)) {
+    const gmail = state.accounts.find((a) => /@(gmail|googlemail)\.com$/i.test(a.email)) || state.accounts[0];
+    state.settings.lineFrom = { ...lf0, until: '2026-10-21', email: gmail ? gmail.email : null };
   }
 
   let tokens = read(TOKENS_KEY) || {};
@@ -157,7 +158,9 @@
     const own = lineById(ev.line) || lineById(ev.extLine) || lineByName(ev.extLineName);
     if (own) return own;
     const from = state.settings.lineFrom;
-    const dated = from && ev.start != null && dateKey(ev.start) >= from.date && lineById(from.line);
+    const day = ev.start != null ? dateKey(ev.start) : null;
+    const dated = from && day && day >= from.date && (!from.until || day <= from.until)
+      && (!from.email || ev.email === from.email) && lineById(from.line);
     if (dated) return dated;
     if (ev.source === 'google') {
       const a = account(ev.email);
@@ -349,7 +352,7 @@
     }
     for (const [id, line] of events) out.push(rec('E', id, line));
     const from = state.settings.lineFrom;
-    if (from && lineById(from.line)) out.push(rec('F', from.date, from.line));
+    if (from && lineById(from.line)) out.push(rec('F', from.date, from.line, from.until || '', from.email || ''));
     return out.join('\n');
   }
 

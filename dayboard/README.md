@@ -85,9 +85,9 @@ Add account). An event picks its line in this order:
 
 1. a line you picked for that one event (event sheet → Line)
 2. the line saved on the event by Day Board (events you created or re-lined)
-3. the **dated default** (Settings → Board → Default line from a date): from
-   that day on, events ride that line. It's set to Personal from 21 October
-   2026; switch it off or change the date and line there
+3. the **dated line** (Settings → Board → Dated line): events on those days
+   ride that line, optionally for one Google account only (21 October 2026,
+   personal Gmail → Personal). Leave the end blank for no end
 4. the line assigned to its **calendar** (Settings, per calendar)
 5. the **account's** line: the first account gets the first line (Work), the
    second gets Personal, and later accounts get the next free line

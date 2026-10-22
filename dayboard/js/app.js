@@ -1240,27 +1240,41 @@
     location.href = `intent://lines?d=${d}#Intent;scheme=dayboard;package=com.braachgs.dayboard;end`;
   }
 
-  // "From Wed, Oct 21, events ride Personal": a dated default line that beats
-  // calendar and account lines, but not a line picked for an event itself.
+  // A dated line ("Wed 21 Oct, personal Gmail: Personal"): beats calendar
+  // and account lines, but not a line picked for an event itself.
   function lineFromRow(st) {
     const lf = st.settings.lineFrom;
     const valid = lf && store.lineById(lf.line);
     const id = `t-${U.uid()}`;
     const fallback = () => (st.lines.find((l) => l.name.toLowerCase() === 'personal') || st.lines[0]).id;
+    const put = (patch) => store.set('lineFrom', { ...lf, ...patch });
+    const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
     return h('div', { class: 'set-block' },
       h('div', { class: 'set-row' },
-        h('label', { for: id }, h('span', {}, 'Default line from a date'),
-          h('small', { class: 'help' }, 'From that day on, events take this line unless you picked one for them. Before it, calendar and account lines apply.')),
+        h('label', { for: id }, h('span', {}, 'Dated line'),
+          h('small', { class: 'help' }, 'For these days, events take this line unless you picked one for them. Leave the end blank for no end.')),
         h('input', {
           type: 'checkbox', class: 'switch', id, checked: !!valid,
-          onchange: (e) => store.set('lineFrom', e.target.checked ? { date: todayKey(), line: fallback() } : null),
+          onchange: (e) => store.set('lineFrom', e.target.checked ? { date: todayKey(), until: todayKey(), email: null, line: fallback() } : null),
         })),
       valid ? h('div', { class: 'set-sub' },
         h('input', {
-          type: 'date', class: 'line-from-date', 'aria-label': 'Default line starts on', value: lf.date, required: true,
-          onchange: (e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) store.set('lineFrom', { ...lf, date: e.target.value }); },
+          type: 'date', class: 'line-from-date', 'aria-label': 'Dated line starts on', value: lf.date, required: true,
+          onchange: (e) => { if (isDay(e.target.value)) put({ date: e.target.value, until: lf.until && lf.until < e.target.value ? e.target.value : lf.until }); },
         }),
-        lineSelect(lf.line, (v) => store.set('lineFrom', { ...lf, line: v }), false, 'Default line from that date')) : null);
+        h('span', { class: 'help', 'aria-hidden': 'true' }, 'to'),
+        h('input', {
+          type: 'date', class: 'line-from-date', 'aria-label': 'Dated line ends on (blank for no end)', value: lf.until || '', min: lf.date,
+          onchange: (e) => put({ until: isDay(e.target.value) ? e.target.value : null }),
+        }),
+        st.accounts.length ? (() => {
+          const sel = h('select', { class: 'line-select', 'aria-label': 'Dated line applies to', onchange: (e) => put({ email: e.target.value || null }) },
+            h('option', { value: '' }, 'All calendars'),
+            st.accounts.map((a) => h('option', { value: a.email }, a.email)));
+          sel.value = lf.email || '';
+          return sel;
+        })() : null,
+        lineSelect(lf.line, (v) => put({ line: v }), false, 'Dated line')) : null);
   }
 
   function sysPreview(x) {

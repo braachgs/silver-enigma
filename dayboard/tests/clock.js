@@ -5,9 +5,6 @@
 const MORNING = (() => { const d = new Date(); d.setHours(10, 0, 0, 0); return d.getTime(); })();
 
 async function pinMorning(page) {
-  // These suites run on today's date: keep the one-off "Personal from
-  // 21 Oct 2026" default (js/store.js) out of them so they pass on any day.
-  await page.addInitScript(() => { window.DayBoardTest = { noLineFrom: true }; });
   await page.clock.install({ time: MORNING });
   await page.clock.resume();
 }
