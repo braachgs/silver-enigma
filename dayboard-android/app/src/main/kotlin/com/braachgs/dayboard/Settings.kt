@@ -32,6 +32,15 @@ object Settings {
 
     fun linesSentAt(context: Context): Long = prefs(context).getLong(LINES_AT, 0L)
 
+    fun linesText(context: Context): String? = prefs(context).getString(LINES, null)
+
+    /** The browser version's whole setup (JSON), sent along with its lines: the app's board starts from it. */
+    fun importedState(context: Context): String? = prefs(context).getString(STATE, null)
+
+    fun saveImportedState(context: Context, json: String) {
+        prefs(context).edit().putString(STATE, json).apply()
+    }
+
     /** Stores [text] if it is a Day Board line setup; false otherwise. */
     fun saveLines(context: Context, text: String?): Boolean {
         if (LineConfig.parse(text) == null) return false
@@ -45,6 +54,7 @@ object Settings {
 
     private const val LINES = "lines"
     private const val LINES_AT = "lines_at"
+    private const val STATE = "imported_state"
 
     fun setCode(context: Context, calendarId: Long, code: String) {
         val clean = Flap.clean(code).replace(" ", "").take(3)

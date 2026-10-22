@@ -75,6 +75,10 @@ class MainActivity : Activity() {
         val text = runCatching {
             String(android.util.Base64.decode(uri.getQueryParameter("d") ?: "", android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP), Charsets.UTF_8)
         }.getOrNull()
+        val state = runCatching {
+            String(android.util.Base64.decode(uri.getQueryParameter("s") ?: "", android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP), Charsets.UTF_8)
+        }.getOrNull()
+        if (!state.isNullOrBlank() && state.length <= 4_000_000 && state.trimStart().startsWith("{")) Settings.saveImportedState(this, state)
         if (text != null && text.length <= 1_000_000 && Settings.saveLines(this, text)) {
             val n = Settings.lineConfig(this)?.lines?.size ?: 0
             Toast.makeText(this, "Got $n lines from Day Board. The widget now matches the app.", Toast.LENGTH_LONG).show()
@@ -125,7 +129,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(6), 0, 0)
         })
         content.addView(button("Open Day Board", primary = false) {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WidgetUpdater.WEB_APP)))
+            startActivity(Intent(this, BoardActivity::class.java))
         }.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(10) })
 
         linesSection()

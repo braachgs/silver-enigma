@@ -1085,15 +1085,18 @@
       e.location ? h('div', { class: 'detail-block' }, h('span', { class: 'cap' }, 'Location'),
         locHref ? h('a', { href: locHref, target: '_blank', rel: 'noopener noreferrer' }, e.location) : h('p', {}, e.location)) : null,
       e.notes ? h('div', { class: 'detail-block' }, h('span', { class: 'cap' }, 'Notes'), h('p', { class: 'notes' }, e.notes.slice(0, 1500))) : null,
-      video || safeHref(e.link) ? h('div', { class: 'detail-actions' },
+      video || safeHref(e.link) || e.phoneId ? h('div', { class: 'detail-actions' },
         video ? h('a', { class: 'btn-primary', href: video, target: '_blank', rel: 'noopener noreferrer' }, icon('video', 18), 'Join video call') : null,
-        safeHref(e.link) ? h('a', { class: 'btn-outline', href: safeHref(e.link), target: '_blank', rel: 'noopener noreferrer' }, icon('link', 16), 'Open in Google Calendar') : null) : null,
+        safeHref(e.link) ? h('a', { class: 'btn-outline', href: safeHref(e.link), target: '_blank', rel: 'noopener noreferrer' }, icon('link', 16), 'Open in Google Calendar') : null,
+        e.phoneId && DB.phone.active ? h('button', { class: 'btn-outline', onclick: () => DB.phone.openEvent(e) }, icon('link', 16), 'Open in Calendar') : null) : null,
       h('div', { class: 'detail-block' }, h('span', { class: 'cap' }, 'Line'),
         h('div', { class: 'line-choices' }, store.state.lines.map((l) => h('button', {
           class: 'line-choice', 'aria-pressed': String(l.id === e.lineObj.id), onclick: () => changeLine(e, l.id),
         }, S.badge(l), h('span', {}, l.name))))),
       h('p', { class: 'detail-source' }, source),
-      e.writable ? h('div', { class: 'detail-actions' },
+      // A repeating phone event is edited in Android's Calendar app, which asks "this one, or all?".
+      e.writable && e.recurring && DB.phone.active ? h('p', { class: 'help' }, 'Repeating event: edit or delete it in your Calendar app.') : null,
+      e.writable && !(e.recurring && DB.phone.active) ? h('div', { class: 'detail-actions' },
         h('button', { class: 'btn-outline', onclick: () => { closeSheet(); openEdit(e.key); } }, 'Edit'),
         h('button', {
           class: 'btn-danger',
@@ -1231,13 +1234,20 @@
 
   // Hands the lines to the Day Board widget app through an Android intent
   // link (base64url text, see store.widgetSetup). Elsewhere it does nothing.
+  // The link that opens the Day Board Android app with this setup.
+  function widgetLink() {
+    const b64 = (text) => {
+      const bytes = new TextEncoder().encode(text);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    };
+    // s: the whole setup, which the Android app's own board starts from.
+    return `intent://lines?d=${b64(store.widgetSetup())}&s=${b64(store.exportState())}#Intent;scheme=dayboard;package=com.braachgs.dayboard;end`;
+  }
   function sendToWidget() {
-    const bytes = new TextEncoder().encode(store.widgetSetup());
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    const d = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    if (!/Android/i.test(navigator.userAgent)) { toast('Open Day Board on your Android phone to send lines to the widget.'); return; }
-    location.href = `intent://lines?d=${d}#Intent;scheme=dayboard;package=com.braachgs.dayboard;end`;
+    if (!/Android/i.test(navigator.userAgent)) { toast('Open Day Board on your Android phone to send your setup to it.'); return; }
+    location.href = widgetLink();
   }
 
   // A dated line ("Wed 21 Oct, personal Gmail: Personal"): beats calendar
@@ -1287,12 +1297,13 @@
 
   function accountCard(a) {
     const ok = !!store.token(a.email);
+    const phone = DB.phone.active;
     return h('div', { class: 'acct' },
       h('div', { class: 'acct-head' },
         h('div', { class: 'acct-id' }, h('strong', {}, a.email),
-          h('small', { class: ok ? 'ok' : 'warn' }, ok ? (a.write ? 'Connected' : 'Connected · read-only') : 'Needs reconnect')),
+          h('small', { class: ok ? 'ok' : 'warn' }, phone ? 'On this phone' : ok ? (a.write ? 'Connected' : 'Connected · read-only') : 'Needs reconnect')),
         ok ? null : h('button', { class: 'btn-small', onclick: () => reconnectFlow(a.email) }, 'Reconnect'),
-        h('button', {
+        phone ? null : h('button', {
           class: 'btn-small ghost',
           onclick: (ev) => confirmTap(ev.currentTarget, 'Tap to confirm', () => store.removeAccount(a.email)),
         }, 'Remove')),
@@ -1339,7 +1350,14 @@
           },
         }, sysPreview(x), h('strong', {}, x.name), h('small', {}, x.tagline))))),
 
-      h('section', { class: 'set-section' },
+      DB.phone.active ? h('section', { class: 'set-section' },
+        h('h3', { class: 'cap' }, 'Calendars on this phone'),
+        h('p', { class: 'help' }, 'Every account synced to this phone, work included. No sign-in or reconnecting: add or remove accounts in Android Settings > Accounts. Each account has its own line, and any calendar can override it.'),
+        st.accounts.map(accountCard),
+        h('div', { class: 'detail-actions' },
+          h('button', { class: 'btn-outline', onclick: () => sync(true) }, icon('sync', 16), 'Sync now'))) : null,
+
+      DB.phone.active ? null : h('section', { class: 'set-section' },
         h('h3', { class: 'cap' }, 'Google Calendar'),
         isPreview() ? h('p', { class: 'help' },
           'This preview can’t sign in to Google. Google Calendar sync works in the installed version of Day Board (GitHub Pages; see the README). Events you add here stay in this browser.') : null,
@@ -1371,9 +1389,13 @@
 
       h('section', { class: 'set-section' },
         h('h3', { class: 'cap' }, 'Android widget'),
-        h('p', { class: 'help' }, 'The home-screen widget can’t see this app’s lines on its own. Send them over to give it the same codes and colours, and send again after you change lines.'),
+        DB.phone.active
+          ? h('p', { class: 'help' }, 'The home-screen widget follows these lines by itself.')
+          : h('p', { class: 'help' }, 'Send your setup to the Day Board Android app: its widget gets the same line codes and colours, and its own board (which reads every account on your phone, with no reconnecting) starts with your lines. Send again after you change lines here.'),
         h('div', { class: 'detail-actions' },
-          h('button', { class: 'btn-outline', onclick: sendToWidget }, icon('display', 16), 'Send lines to widget'))),
+          DB.phone.active
+            ? h('button', { class: 'btn-outline', onclick: () => DB.phone.openWidgetSettings() }, icon('display', 16), 'Widget settings')
+            : h('button', { class: 'btn-outline', onclick: sendToWidget }, icon('display', 16), 'Send to Android app'))),
 
       h('section', { class: 'set-section' },
         h('h3', { class: 'cap' }, 'Data'),
@@ -1798,6 +1820,6 @@
     }
   }
 
-  DB.app = { render, ui, openSettings, openDisplay, toast };
+  DB.app = { render, ui, openSettings, openDisplay, toast, sync, widgetLink };
   init();
 })(window.DB);

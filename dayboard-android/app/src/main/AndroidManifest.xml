@@ -3,6 +3,10 @@
 
     <!-- Reads the calendars already synced to this phone: no Google sign-in. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- The board adds, edits and deletes events (they sync to Google as usual). -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- The board is the web app, loaded from GitHub Pages and kept offline. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Wakes the widget exactly when a remark changes (BOARDING, FINAL CALL, NOW). -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission
@@ -17,14 +21,25 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DayBoard">
 
+        <!-- Day Board: the board, reading every account on this phone. -->
         <activity
-            android:name=".MainActivity"
+            android:name=".BoardActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- Widget settings (from the board's Settings), and where the browser
+             version's "Send to Android app" link lands. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/widget_settings_name"
+            android:launchMode="singleTop">
             <!-- dayboard://lines?d=…: Day Board's line setup, from the web app's Settings. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

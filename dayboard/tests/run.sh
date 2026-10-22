@@ -10,7 +10,7 @@ if ! curl -s -o /dev/null -m 3 http://127.0.0.1:8765/dayboard/; then
   sleep 1
 fi
 status=0
-for t in tour.js local-test.js google-test.js flap-test.js review-fixes-test.js swipe-test.js dates-test.js; do
+for t in tour.js local-test.js google-test.js flap-test.js review-fixes-test.js swipe-test.js dates-test.js phone-test.js; do
   echo "=== $t"
   node "$t" "$OUT" || status=1
 done

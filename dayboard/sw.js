@@ -1,7 +1,7 @@
 /* Day Board service worker: keeps the app shell available offline.
  * Only same-origin files are cached; Google sign-in and Calendar API calls
  * always go to the network. Bump VERSION when shipping changes. */
-const VERSION = 'dayboard-v9';
+const VERSION = 'dayboard-v10';
 const SHELL = [
   './',
   'index.html',
@@ -12,6 +12,7 @@ const SHELL = [
   'js/flap.js',
   'js/store.js',
   'js/google.js',
+  'js/phone.js',
   'js/sample.js',
   'js/app.js',
   'manifest.webmanifest',

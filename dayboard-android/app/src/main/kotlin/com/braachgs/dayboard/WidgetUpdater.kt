@@ -9,7 +9,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Build
 import android.text.format.DateFormat
 import android.util.Log
@@ -127,13 +126,9 @@ object WidgetUpdater {
         if (model.rows.isEmpty()) "Day Board: ${model.message?.lowercase()}"
         else "Day Board departures: " + model.rows.joinToString("; ") { "${it.time.trim()} ${it.event.title}, ${it.remark.text.lowercase()}" }
 
-    /** Tapping opens Day Board (the installed web app picks up its own link), or this app to grant access. */
+    /** Tapping opens Day Board's board in this app (which asks for calendar access if it's missing). */
     private fun clickIntent(context: Context): PendingIntent {
-        val intent = if (CalendarSource.hasPermission(context)) {
-            Intent(Intent.ACTION_VIEW, Uri.parse(WEB_APP))
-        } else {
-            Intent(context, MainActivity::class.java)
-        }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(context, BoardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 

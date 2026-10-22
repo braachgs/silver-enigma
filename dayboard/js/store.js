@@ -69,7 +69,18 @@
   }
 
   const base = freshState();
-  const saved = read(KEY);
+  // First run inside the Android app: start from the setup sent over from
+  // the browser version (Settings > Android widget), if there is one.
+  const imported = () => {
+    try {
+      const raw = window.DayBoardPhone && window.DayBoardPhone.importedState();
+      const s = raw ? JSON.parse(raw) : null;
+      return s && s.version === 1 && Array.isArray(s.lines) && s.lines.length ? s : null;
+    } catch (_) {
+      return null;
+    }
+  };
+  const saved = read(KEY) || imported();
   const state = saved && saved.version === 1
     ? { ...base, ...saved, settings: { ...base.settings, ...(saved.settings || {}) } }
     : base;
@@ -356,6 +367,13 @@
     return out.join('\n');
   }
 
+  // Everything that's yours, for moving to the Android app: lines, accounts
+  // and their calendar lines, picked lines, local events, settings. Not the
+  // Google tokens or the event cache.
+  function exportState() {
+    return JSON.stringify({ ...state, settings: { ...state.settings, clientId: '' } });
+  }
+
   function resetAll() {
     for (const k of [KEY, TOKENS_KEY, CACHE_KEY]) {
       try { localStorage.removeItem(k); } catch (_) { /* storage unavailable */ }
@@ -368,6 +386,6 @@
     account, upsertAccount, updateAccount, updateCalendar, removeAccount,
     token, setToken, clearToken,
     cachedEvents, putWindow, putEvent, dropEvent, covered, lastFetch,
-    addLocal, updateLocal, removeLocal, resetAll, widgetSetup,
+    addLocal, updateLocal, removeLocal, resetAll, widgetSetup, exportState,
   };
 })(window.DB);
