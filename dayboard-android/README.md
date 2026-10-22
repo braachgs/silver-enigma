@@ -1,8 +1,23 @@
-# Day Board widget (Android)
+# Day Board (Android)
 
-A home-screen widget that shows your next calendar events as a split-flap
-departure board, in the style of the Day Board web app's Split-Flap
-Departures board. Tap it to open Day Board.
+Day Board's board, plus a home-screen widget that shows your next calendar
+events as a split-flap departure board.
+
+- **The board** (`BoardActivity`, the launcher icon) is the web app in a
+  WebView, loaded from GitHub Pages and kept offline by its service worker,
+  so board changes arrive without a new APK. `PhoneBridge` gives the page
+  `window.DayBoardPhone`: the phone's calendars and event instances, and
+  insert/update/delete through `CalendarContract` (READ_CALENDAR and
+  WRITE_CALENDAR). Every account synced to the phone is there, work
+  included, with no Google sign-in. A content observer tells the page when
+  the calendar store changes. Only Day Board's own pages load in the
+  WebView; every other link opens in its own app, so the bridge never
+  serves another site.
+- **Lines**: the board saves its line setup for the widget whenever it
+  changes. "Send to Android app" in the browser version also carries the
+  whole setup (`s=`), which the app's board adopts on its first run.
+- **Widget settings** (`MainActivity`) open from the board's Settings →
+  Android widget.
 
 - **Reads the phone's own calendars** (CalendarContract): every Google account
   synced to the phone, work included, with no sign-in and no hourly reconnect.
@@ -28,7 +43,7 @@ Departures board. Tap it to open Day Board.
 | Path | What |
 |---|---|
 | `core/` | Plain Kotlin, no Android: text rules (`Flap`), remarks (`Remarks`), which departures to show (`BoardBuilder`), the web app's lines (`LineConfig`), layout and drawing (`BoardLayout`, `BoardRenderer`). |
-| `app/` | The Android app: `WidgetUpdater` (render and push), `CalendarSource`, `Receivers` (widget, alarms, boot/time-zone, calendar-change job), `MainActivity`. |
+| `app/` | The Android app: `BoardActivity` and `PhoneBridge` (the board), `WidgetUpdater` (render and push), `CalendarSource`, `Receivers` (widget, alarms, boot/time-zone, calendar-change job), `MainActivity` (widget settings). |
 | `app/release.p12` | Signing key, created and committed by the workflow on its first signed build, encrypted with the `DAYBOARD_KEYSTORE_PASSWORD` repository secret (the only place the password exists). |
 | `OFL-BarlowCondensed.txt` | Licence for the bundled Barlow Condensed font (SIL OFL 1.1). |
 

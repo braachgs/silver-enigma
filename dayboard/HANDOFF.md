@@ -66,7 +66,13 @@ without its `<html>/<head>/<body>` wrapper.
 
 ## Open decisions (owner: Shawn)
 
-1. **Android widget:** native, built and installed (no work profile). It
+1. **Android app:** the board now runs inside it, reading every account on
+   the phone (work included) through `js/phone.js` and `PhoneBridge`, so
+   the web app's Google sign-in is only needed in a browser. Unverified on a
+   real phone: which Calendars column holds each Google calendar id (the
+   bridge tries NAME, _sync_id, OWNER_ACCOUNT), and that WebView keeps the
+   service worker's offline copy.
+   **Widget:** native, built and installed (no work profile). It
    matches the web app's lines after Settings → Android widget → Send lines
    to widget. Unverified on a real phone: whether Android syncs Day Board's
    private extended properties (the widget falls back to the lines the web

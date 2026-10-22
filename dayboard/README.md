@@ -98,14 +98,23 @@ personal account is the **D / Circle** line. A shared calendar like "Family"
 can override that (say, **F / Metropolitan**), and any single event can be
 moved.
 
-## Android widget
+## Android app and widget
 
-`dayboard-android/` is a native home-screen widget that reads the calendars
-synced to the phone. It can't see this app's lines by itself, so Settings →
-**Android widget → Send lines to widget** hands them over: the line codes
-and flap colours, which calendar and account rides which line, lines picked
-for single events, and the dated default. Send again after changing lines.
-Calendars from accounts that aren't in Day Board keep their own colour.
+`dayboard-android/` is the Day Board Android app: this board, plus a
+home-screen widget. In the app the board reads **every account synced to
+the phone** (work included) from Android's calendar store, through
+`js/phone.js`: no Google sign-in, client ID or hourly reconnect. Adding,
+editing and deleting go through the phone and sync to Google as usual;
+repeating events are edited in the phone's Calendar app. Lines picked for
+events are kept by the board (Android doesn't let apps store them on the
+event), and the widget follows the board's lines by itself.
+
+Moving over from the browser version: Settings → **Android widget → Send
+to Android app** hands over your setup (lines, calendar and account lines,
+lines picked for events, settings; not Google tokens). The app's board
+starts from it the first time it opens. The browser version keeps working
+on its own, for a computer or iPhone, but the two don't sync with each
+other.
 
 ## Run it
 
