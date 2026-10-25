@@ -38,12 +38,46 @@ events as a split-flap departure board.
   dated default, the calendar's line, the account's line. Calendars from
   accounts Day Board doesn't have keep their own colour and code.
 
+## Match Board
+
+A second app in this project (`matchboard/`, `com.braachgs.matchboard`):
+Premier League matches on the same split-flap board, as a resizable 4x2
+widget. It shares Day Board's renderer pieces, palette, flap font and
+signing key; its logic lives in core's `dayboard.match` package and is
+tested on the JVM (`MatchTest`, with previews in `core/build/previews/match-*.png`).
+
+- **Rows**: kickoff (12-hour, local; a past day's result shows its day),
+  home and away short names with each score on its own amber flap, and a
+  status flap: ON TIME, IN 20 MIN (5-minute steps from an hour out), LIVE,
+  HALF TIME, FULL TIME, POSTPONED (also SUSPENDED, CANCELLED, TOMORROW,
+  SAT 31 OCT). Past kickoff with no word from the feed it says KICK OFF,
+  never LIVE. At full time the winner is bold and the loser dimmed.
+- **Order**: today's matches, then upcoming, then recent results (newest
+  first). Your club's current or next match is pinned on top with an
+  amber bar (Brentford unless you pick another in the app).
+- **Data**: football-data.org v4, competition PL, with your own API key,
+  typed into the app and kept in its private storage (never in the code
+  or the APK). A full update is two requests (the past week, the coming
+  week); a live update fetches today only.
+- **Refresh**: WorkManager every 15 minutes; two minutes after your club
+  kicks off; every minute while your club is live, only while the screen
+  is on, Battery Saver is off, the phone isn't dozing and the app isn't
+  battery-restricted.
+- **Never a guessed score**: a failed or stale update keeps the last
+  scores exactly as sent, and the footer says when they're from
+  ("AS OF 2:39 PM · OFFLINE").
+- **Taps**: each row is its own band of the board with its own link:
+  finished matches search YouTube for "<Home> vs <Away> highlights
+  Premier League NBC Sports"; live and upcoming ones open Peacock's
+  Premier League page. The header and footer open the app.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `core/` | Plain Kotlin, no Android: text rules (`Flap`), remarks (`Remarks`), which departures to show (`BoardBuilder`), the web app's lines (`LineConfig`), layout and drawing (`BoardLayout`, `BoardRenderer`). |
-| `app/` | The Android app: `BoardActivity` and `PhoneBridge` (the board), `WidgetUpdater` (render and push), `CalendarSource`, `Receivers` (widget, alarms, boot/time-zone, calendar-change job), `MainActivity` (widget settings). |
+| `matchboard/` | Match Board: `Feed`/`Api` (football-data.org), `Store` (key, club, responses), `Refresh` (WorkManager), `Widgets` (render, cut into tappable bands), `SettingsActivity`. |
+| `app/` | The Day Board app: `BoardActivity` and `PhoneBridge` (the board), `WidgetUpdater` (render and push), `CalendarSource`, `Receivers` (widget, alarms, boot/time-zone, calendar-change job), `MainActivity` (widget settings). |
 | `app/release.p12` | Signing key, created and committed by the workflow on its first signed build, encrypted with the `DAYBOARD_KEYSTORE_PASSWORD` repository secret (the only place the password exists). |
 | `OFL-BarlowCondensed.txt` | Licence for the bundled Barlow Condensed font (SIL OFL 1.1). |
 
