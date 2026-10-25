@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The board is drawn by dayboard.match.MatchRenderer as one bitmap, then
+     cut into bands: the header, one band per match (each its own tap
+     target), and the footer. The clock over the header corner is a
+     TextClock, so it ticks without waking the app. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/head"
+            style="@style/MatchSlice"
+            android:contentDescription="@string/widget_description" />
+
+        <ImageView
+            android:id="@+id/row0"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row1"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row2"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row3"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row4"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row5"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row6"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row7"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row8"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+        <ImageView
+            android:id="@+id/row9"
+            style="@style/MatchSlice"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/foot"
+            style="@style/MatchSlice" />
+    </LinearLayout>
+
+    <TextClock
+        android:id="@+id/clock"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/header_h_compact"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="@dimen/pad_compact"
+        android:layout_marginEnd="@dimen/pad_compact"
+        android:paddingEnd="2dp"
+        android:fontFamily="sans-serif-condensed"
+        android:format12Hour="h:mm"
+        android:format24Hour="HH:mm"
+        android:gravity="center_vertical"
+        android:includeFontPadding="false"
+        android:textColor="@color/amber"
+        android:textSize="14dp"
+        android:textStyle="bold" />
+</FrameLayout>

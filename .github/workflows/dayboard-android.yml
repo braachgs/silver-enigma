@@ -1,6 +1,9 @@
-# Builds the Day Board Android widget (dayboard-android/) and publishes the
-# APK at a fixed link:
+# Builds the Day Board and Match Board Android apps (dayboard-android/) and
+# publishes each APK at a fixed link:
 #   https://github.com/braachgs/silver-enigma/releases/download/widget/DayBoard-widget.apk
+#   https://github.com/braachgs/silver-enigma/releases/download/matchboard/MatchBoard.apk
+# and copies both to get/ on this branch, which GitHub Pages serves as a
+# plain download page (https://braachgs.github.io/silver-enigma/get/).
 #
 # Signing: every build must use the same key, or Android won't install it as
 # an update. The key's password exists only in the DAYBOARD_KEYSTORE_PASSWORD
@@ -19,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  pages: write
 
 concurrency:
   group: dayboard-android-${{ github.ref }}
@@ -67,10 +71,10 @@ jobs:
       - name: Test the board logic and layout
         run: gradle -p dayboard-android/core test --console=plain
 
-      - name: Build the APK
+      - name: Build the APKs
         env:
           DAYBOARD_KEYSTORE_PASSWORD: ${{ secrets.DAYBOARD_KEYSTORE_PASSWORD }}
-        run: gradle -p dayboard-android :app:assembleRelease -PversionCode=${{ github.run_number }} --console=plain
+        run: gradle -p dayboard-android :app:assembleRelease :matchboard:assembleRelease -PversionCode=${{ github.run_number }} --console=plain
 
       - name: Keep the APK and previews with this run
         uses: actions/upload-artifact@v4
@@ -78,6 +82,7 @@ jobs:
           name: day-board-widget-${{ github.run_number }}
           path: |
             dayboard-android/app/build/outputs/apk/release/*.apk
+            dayboard-android/matchboard/build/outputs/apk/release/*.apk
             dayboard-android/core/build/previews/*.png
 
       - name: Publish the APK
@@ -92,6 +97,41 @@ jobs:
             --title "Day Board widget 1.${{ github.run_number }}" \
             --notes "Open this page on your Android phone and tap DayBoard-widget.apk to install or update. Built from ${GITHUB_SHA::7}." \
             --latest
+
+      - name: Publish Match Board
+        if: env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp dayboard-android/matchboard/build/outputs/apk/release/matchboard-release.apk MatchBoard.apk
+          gh release delete matchboard --cleanup-tag --yes || true
+          gh release create matchboard MatchBoard.apk \
+            --target "$GITHUB_SHA" \
+            --title "Match Board 1.${{ github.run_number }}" \
+            --notes "Open this page on your Android phone and tap MatchBoard.apk to install or update. Built from ${GITHUB_SHA::7}." \
+            --latest=false
+
+      # Some in-app browsers stall on GitHub's redirected release downloads;
+      # GitHub Pages serves these straight.
+      - name: Update the download page
+        if: env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p get
+          cp DayBoard-widget.apk get/DayBoard.apk
+          cp MatchBoard.apk get/MatchBoard.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add get/DayBoard.apk get/MatchBoard.apk
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Download page: Day Board and Match Board 1.${{ github.run_number }}"
+          for i in 1 2 3; do
+            git fetch --depth=50 origin "$GITHUB_REF_NAME" && git rebase "origin/$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break
+            sleep 5
+          done
+          # Pushes made with this workflow's token don't start a Pages build on their own.
+          gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" || echo "::warning::Couldn't request a Pages build; it will update with the next push."
 
       - name: Say why nothing was published
         if: env.HAS_KEY != 'true'

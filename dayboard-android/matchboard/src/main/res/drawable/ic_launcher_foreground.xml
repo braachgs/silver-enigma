@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two amber score flaps, each split across the middle like the board's. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#F2B705" android:pathData="M33,42h19a2,2 0 0 1 2,2v28a2,2 0 0 1 -2,2h-19a2,2 0 0 1 -2,-2v-28a2,2 0 0 1 2,-2z" />
+    <path android:fillColor="#F2B705" android:pathData="M58,42h19a2,2 0 0 1 2,2v28a2,2 0 0 1 -2,2h-19a2,2 0 0 1 -2,-2v-28a2,2 0 0 1 2,-2z" />
+    <path android:fillColor="#59000000" android:pathData="M31,57.3h23v1.4h-23zM56,57.3h23v1.4h-23z" />
+    <path android:fillColor="#161616" android:pathData="M40,48h5v20h-5zM62,48h9v4h-5v4h5v12h-9v-4h5v-4h-5z" />
+</vector>

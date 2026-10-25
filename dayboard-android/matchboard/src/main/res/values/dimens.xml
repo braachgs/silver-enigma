@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Header metrics; they must match dayboard.core.BoardLayout so the live
+     clock sits in the board's header (regular and compact boards). -->
+<resources>
+    <dimen name="pad">10dp</dimen>
+    <dimen name="header_h">24dp</dimen>
+    <dimen name="pad_compact">8dp</dimen>
+    <dimen name="header_h_compact">20dp</dimen>
+</resources>
