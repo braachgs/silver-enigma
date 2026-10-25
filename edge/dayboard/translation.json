@@ -1,0 +1,18 @@
+{
+  "en": {
+    "translation": {
+      "12-hour": "12-hour",
+      "24-hour": "24-hour",
+      "Calendar 1": "Calendar 1",
+      "Calendar 2": "Calendar 2",
+      "Calendar 3": "Calendar 3",
+      "Calendar 4": "Calendar 4",
+      "Clock": "Clock",
+      "Day Board": "Day Board",
+      "Line code": "Line code",
+      "Line colour": "Line colour",
+      "Secret iCal address": "Secret iCal address",
+      "Your calendars as a split-flap departure board. Each calendar is a line. In Google Calendar on the web: Settings, pick a calendar, Integrate calendar, copy the Secret address in iCal format and paste it below. No sign-in and no reconnecting; the address stays in iCUE on this PC.": "Your calendars as a split-flap departure board. Each calendar is a line. In Google Calendar on the web: Settings, pick a calendar, Integrate calendar, copy the Secret address in iCal format and paste it below. No sign-in and no reconnecting; the address stays in iCUE on this PC."
+    }
+  }
+}

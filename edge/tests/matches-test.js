@@ -1,0 +1,37 @@
+// node edge/tests/matches-test.js  (TZ=Europe/London): the Kotlin MatchTest's cases, in JS.
+const fs = require('fs');
+const path = require('path');
+const M = require('../common/matches.js');
+let fails = 0;
+const eq = (a, b, m) => { const ok = JSON.stringify(a) === JSON.stringify(b); console.log(`${ok ? 'ok' : 'FAIL'}: ${m}${ok ? '' : ` — got ${JSON.stringify(a)}`}`); if (!ok) fails++; };
+const T = (s) => Date.parse(s);
+const json = fs.readFileSync(path.join(__dirname, '../../dayboard-android/core/src/test/resources/pl-matches.json'), 'utf8');
+const matches = M.parseMatches(json);
+const BRE = 402;
+const now = T('2026-10-25T14:40:00Z');
+
+eq(matches.length, 10, 'parses v4');
+const bre = matches.find((m) => m.id === 1005);
+eq([bre.status, bre.homeScore, bre.awayScore], ['IN_PLAY', 1, 1], 'live score as sent');
+eq(matches.find((m) => m.id === 1007).homeScore, null, 'no score before the feed gives one');
+const rows = M.order(matches, BRE, now);
+eq(rows.map((r) => r.match.id), [1005, 1006, 1007, 1008, 1009, 1010, 1004, 1002, 1003, 1001], 'today, upcoming, recent; your club on top');
+eq(rows.map((r) => r.status.text), ['LIVE', 'IN 20 MIN', 'ON TIME', 'TOMORROW', 'SAT 31 OCT', 'SUN 1 NOV', 'FULL TIME', 'FULL TIME', 'POSTPONED', 'FULL TIME'], 'statuses');
+eq(rows.map((r) => r.time), [' 2:00P', ' 3:00P', ' 4:30P', ' 8:00P', ' 3:00P', ' 2:00P', 'SAT 24', 'SAT 24', 'SAT 24', 'SAT 24'], 'times');
+const done = matches.map((m) => (m.id === 1005 ? { ...m, status: 'FINISHED', winner: 'DRAW' } : m));
+const r2 = M.order(done, BRE, now);
+eq([r2[0].match.id, r2[0].pinned, r2[0].status.text, r2[1].match.id], [1010, true, 'SUN 1 NOV', 1005], 'pins the next match when none is live');
+const liv = matches.find((m) => m.id === 1006);
+eq(M.statusOf(liv, T('2026-10-25T15:02:00Z')).text, 'KICK OFF', 'past kickoff without word from the feed: KICK OFF, not LIVE');
+eq(M.statusOf(liv, T('2026-10-25T14:57:30Z')).text, 'IN 5 MIN', 'countdown');
+eq(M.nextChange(matches, now), T('2026-10-25T14:45:00Z'), 'next countdown step');
+eq(M.nextChange(matches, T('2026-10-25T17:00:00Z')), T('2026-10-26T00:00:00Z'), 'then midnight');
+const stale = M.build({ matches, fetchedAt: T('2026-10-25T14:39:00Z'), error: 'OFFLINE OR BLOCKED' }, BRE, T('2026-10-25T15:20:00Z'), 4);
+eq([stale.footer, stale.stale, stale.rows[0].homeScore, stale.more], ['AS OF 2:39 PM · OFFLINE OR BLOCKED', true, 1, 6], 'stale: last score kept, footer says how old');
+eq(M.build({ matches, fetchedAt: T('2026-10-24T18:10:00Z') }, BRE, now, 4).footer, 'AS OF SAT 7:10 PM', 'an earlier day names the day');
+eq(M.build({ matches: [], fetchedAt: null, error: 'CHECK API KEY' }, BRE, now, 4).message, 'CHECK API KEY', 'first update failed: says why');
+eq([M.findClub(matches, 'brentford').id, M.findClub(matches, 'Spurs').id, M.findClub(matches, 'BHA').id, M.findClub(matches, 'xyz')], [402, 73, 397, null], 'club by name, short form or code');
+eq(M.link(matches.find((m) => m.id === 1004)), 'https://www.youtube.com/results?search_query=Fulham+vs+Bournemouth+highlights+Premier+League+NBC+Sports', 'finished: highlights search');
+eq(M.link(bre), 'https://www.peacocktv.com/sports/premier-league', 'live: Peacock');
+eq([M.fitName(bre.away, 10), M.fitName(bre.away, 8), M.fitName(matches.find((m) => m.id === 1003).away, 11)], ['Man United', 'Man Utd', 'Palace'], 'names fit their flaps');
+if (fails) { console.log(`${fails} FAILED`); process.exitCode = 1; } else console.log('ALL OK');

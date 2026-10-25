@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tr('Day Board')</title>
+  <link rel="icon" type="image/svg+xml" href="resources/dayboard.svg" />
+  <meta name="x-icue-restrictions" data-restrictions='[{ "device": "dashboard_lcd" }]' />
+  <meta name="x-icue-widget-preview" content="resources/preview.png" />
+
+  <meta name="x-icue-property" content="hourFormat" data-label="tr('Clock')" data-type="tab-buttons"
+    data-values="[{'key':'12','value':tr('12-hour')},{'key':'24','value':tr('24-hour')}]" data-default="'12'" />
+
+  <meta name="x-icue-property" content="cal1Url" data-label="tr('Secret iCal address')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="cal1Code" data-label="tr('Line code')" data-type="textfield" data-default="'PRS'" />
+  <meta name="x-icue-property" content="cal1Color" data-label="tr('Line colour')" data-type="color" data-default="'#F2C500'" />
+  <meta name="x-icue-property" content="cal2Url" data-label="tr('Secret iCal address')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="cal2Code" data-label="tr('Line code')" data-type="textfield" data-default="'WRK'" />
+  <meta name="x-icue-property" content="cal2Color" data-label="tr('Line colour')" data-type="color" data-default="'#1F5AA6'" />
+  <meta name="x-icue-property" content="cal3Url" data-label="tr('Secret iCal address')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="cal3Code" data-label="tr('Line code')" data-type="textfield" data-default="'SCL'" />
+  <meta name="x-icue-property" content="cal3Color" data-label="tr('Line colour')" data-type="color" data-default="'#B0287A'" />
+  <meta name="x-icue-property" content="cal4Url" data-label="tr('Secret iCal address')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="cal4Code" data-label="tr('Line code')" data-type="textfield" data-default="'TRV'" />
+  <meta name="x-icue-property" content="cal4Color" data-label="tr('Line colour')" data-type="color" data-default="'#C8102E'" />
+
+  <script id="x-icue-groups" type="application/json">
+  [
+    {
+      "title": "tr('Day Board')",
+      "properties": ["hourFormat"],
+      "info": "tr('Your calendars as a split-flap departure board. Each calendar is a line. In Google Calendar on the web: Settings, pick a calendar, Integrate calendar, copy the Secret address in iCal format and paste it below. No sign-in and no reconnecting; the address stays in iCUE on this PC.')"
+    },
+    { "title": "tr('Calendar 1')", "properties": ["cal1Url", "cal1Code", "cal1Color"] },
+    { "title": "tr('Calendar 2')", "properties": ["cal2Url", "cal2Code", "cal2Color"] },
+    { "title": "tr('Calendar 3')", "properties": ["cal3Url", "cal3Code", "cal3Color"] },
+    { "title": "tr('Calendar 4')", "properties": ["cal4Url", "cal4Code", "cal4Color"] }
+  ]
+  </script>
+
+  <link rel="stylesheet" type="text/css" href="styles/board.css" />
+  <script src="scripts/flapboard.js"></script>
+  <script src="scripts/ics.js"></script>
+  <script src="scripts/departures.js"></script>
+  <script src="scripts/net.js"></script>
+</head>
+<body>
+  <canvas id="board" aria-label="Day Board"></canvas>
+  <script>
+    /* Day Board for the Xeneon Edge: the Android widget's departure board,
+     * drawn on a canvas, from your calendars' secret iCal addresses. Each
+     * address is read every 10 minutes; a calendar that fails keeps its last
+     * events and the footer says so. */
+
+    icueEvents = {
+      onICUEInitialized: start,
+      onDataUpdated: readSettings
+    };
+
+    function prop(name) {
+      if (Object.prototype.hasOwnProperty.call(window, name)) return window[name];
+      try { return Function('return typeof ' + name + ' !== "undefined" ? ' + name + ' : undefined')(); } catch (e) { return undefined; }
+    }
+
+    var EVERY = 10 * 60000;
+    var DAYS_KEPT = 3; // today, tomorrow and a day's margin
+    var cfg = { hour12: true, cals: [] };
+    var timer = null;
+    var started = false;
+    var busy = false;
+
+    function storeKey() { return 'dayboard-' + (prop('uniqueId') || 'standalone'); }
+    function load() {
+      try { return JSON.parse(localStorage.getItem(storeKey())) || { cals: {} }; } catch (e) { return { cals: {} }; }
+    }
+    function save(s) {
+      try { localStorage.setItem(storeKey(), JSON.stringify(s)); } catch (e) { /* the board still works this session */ }
+    }
+
+    // Only Google's iCal addresses: the widget's permission covers calendar.google.com.
+    function validUrl(u) {
+      try { var x = new URL(u); return x.protocol === 'https:' && /(^|\.)calendar\.google\.com$/.test(x.hostname); } catch (e) { return false; }
+    }
+
+    function readSettings() {
+      var hf = prop('hourFormat');
+      cfg.hour12 = String(hf === undefined ? '12' : hf) !== '24';
+      var before = JSON.stringify(cfg.cals.map(function (c) { return c.url; }));
+      cfg.cals = [];
+      for (var i = 1; i <= 4; i++) {
+        var raw = prop('cal' + i + 'Url');
+        var url = String(raw || '').trim().replace(/^webcal:/i, 'https:');
+        if (!url) continue;
+        cfg.cals.push({
+          slot: i,
+          url: url,
+          code: FlapBoard.Flap.clean(prop('cal' + i + 'Code') || '').replace(/ /g, '').slice(0, 3),
+          color: String(prop('cal' + i + 'Color') || '#1F5AA6').slice(0, 7)
+        });
+      }
+      render();
+      if (started && JSON.stringify(cfg.cals.map(function (c) { return c.url; })) !== before) refresh();
+    }
+
+    async function refresh() {
+      if (busy) return;
+      busy = true;
+      var s = load();
+      var now = Date.now();
+      var from = Departures.dayStart(now, -1);
+      var to = Departures.dayStart(now, DAYS_KEPT);
+      var keep = {};
+      for (var i = 0; i < cfg.cals.length; i++) {
+        var c = cfg.cals[i];
+        var old = s.cals[c.url] || {};
+        if (!validUrl(c.url)) { keep[c.url] = { events: [], at: null, error: 'NOT A GOOGLE ICAL ADDRESS' }; continue; }
+        try {
+          var r = await EdgeNet.get(c.url);
+          if (!r.ok) throw new EdgeNet.NetError(r.status === 404 || r.status === 403 ? 'ADDRESS NOT FOUND' : 'UPDATE FAILED', 'HTTP ' + r.status);
+          var cal = ICS.parse(await r.text());
+          keep[c.url] = {
+            name: cal.name,
+            events: ICS.expand(cal, from, to).map(function (e) { return { title: e.title, start: e.start, end: e.end, allDay: e.allDay }; }),
+            at: Date.now()
+          };
+        } catch (e) {
+          keep[c.url] = { name: old.name, events: old.events || [], at: old.at || null, error: e.label || 'UPDATE FAILED' };
+          console.warn('Calendar ' + c.slot + ' failed:', e.message);
+        }
+      }
+      s.cals = keep;
+      save(s);
+      busy = false;
+      render();
+      clearTimeout(timer);
+      timer = setTimeout(refresh, EVERY);
+    }
+
+    function lineFor(c, name) {
+      return { code: c.code || FlapBoard.Flap.code(name || ('CAL ' + c.slot)), color: c.color };
+    }
+
+    var lastDrawKey = '';
+    function render() {
+      var canvas = document.getElementById('board');
+      var prepared = FlapBoard.prepare(canvas, '"Barlow Condensed Flap", "Arial Narrow", sans-serif');
+      var d = FlapBoard.scaleFor(prepared.w, prepared.h);
+      var l = FlapBoard.dayLayout(prepared.w, prepared.h, d, cfg.hour12);
+      var now = Date.now();
+      var s = load();
+      var events = [];
+      var failed = [];
+      var oldest = null;
+      cfg.cals.forEach(function (c) {
+        var got = s.cals[c.url];
+        if (!got) return;
+        if (got.error) failed.push('CAL ' + c.slot + ': ' + got.error);
+        if (got.at && (oldest === null || got.at < oldest)) oldest = got.at;
+        (got.events || []).forEach(function (e) { events.push(Object.assign({}, e, { line: lineFor(c, got.name) })); });
+      });
+      var message = null;
+      if (!cfg.cals.length) message = 'ADD A SECRET ICAL ADDRESS IN THE WIDGET SETTINGS';
+      else if (oldest === null && failed.length) message = /OFFLINE OR BLOCKED/.test(failed[0]) ? 'NO CONNECTION. IS THE DAY BOARD HELPER RUNNING?' : failed[0];
+      else if (oldest === null) message = 'LOADING YOUR CALENDARS';
+      var model = Departures.build(events, now, l.capacity, { hour12: cfg.hour12, message: message });
+      var footer;
+      var ink = null;
+      if (failed.length && oldest !== null) {
+        footer = 'AS OF ' + Departures.boardTime(oldest, cfg.hour12).trim() + ' · ' + failed.join(' · ');
+        ink = FlapBoard.Palette.ink('BOARDING');
+      } else if (model.allDay.length) {
+        footer = 'ALL DAY · ' + model.allDay.map(function (e) { return e.title; }).join(', ').toUpperCase();
+      } else {
+        footer = '';
+      }
+      var t2 = new Date(now);
+      var clock = cfg.hour12 ? (t2.getHours() % 12 || 12) + ':' + String(t2.getMinutes()).padStart(2, '0')
+        : String(t2.getHours()).padStart(2, '0') + ':' + String(t2.getMinutes()).padStart(2, '0');
+      FlapBoard.drawDayBoard(prepared.p, {
+        dayLabel: model.dayLabel, rows: model.rows, message: model.message, footer: footer, footerInk: ink, more: model.moreToday
+      }, l, clock);
+      lastDrawKey = Math.floor(now / 60000) + '|' + prepared.w + 'x' + prepared.h;
+    }
+
+    function onInit() {
+      if (started) { readSettings(); return; }
+      started = true;
+      readSettings();
+      window.addEventListener('resize', render);
+      setInterval(function () {
+        var c = document.getElementById('board');
+        if (Math.floor(Date.now() / 60000) + '|' + c.clientWidth + 'x' + c.clientHeight !== lastDrawKey) render();
+      }, 5000);
+      refresh();
+    }
+
+    function start() {
+      var go = function () { onInit(); };
+      if (document.fonts && document.fonts.load) document.fonts.load('20px "Barlow Condensed Flap"').then(go, go); else go();
+    }
+
+    if (typeof iCUE_initialized !== 'undefined' && iCUE_initialized) start();
+    if (typeof iCUE_initialized === 'undefined') start(); // outside iCUE, for testing
+  </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+# Builds the Xeneon Edge widgets (edge/) and publishes them at fixed links:
+#   https://github.com/braachgs/silver-enigma/releases/download/edge/day-board.icuewidget
+#   https://github.com/braachgs/silver-enigma/releases/download/edge/match-board.icuewidget
+#   https://github.com/braachgs/silver-enigma/releases/download/edge/DayBoardHelper.ps1
+name: Xeneon Edge widgets
+
+on:
+  push:
+    paths:
+      - 'edge/**'
+      - 'dayboard-android/core/src/test/resources/pl-matches.json'
+      - '.github/workflows/edge-widgets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: edge-widgets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  widgets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test the iCal reader and match logic
+        env:
+          TZ: Europe/London
+        run: |
+          node edge/tests/ics-test.js
+          TZ=America/New_York node edge/tests/ics-test.js
+          node edge/tests/matches-test.js
+      - name: Validate and package with Corsair's CLI
+        run: |
+          npm install -g icuewidget-cli@0.5
+          edge/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edge-widgets-${{ github.run_number }}
+          path: |
+            edge/dist/*.icuewidget
+            edge/helper/DayBoardHelper.ps1
+
+  helper:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the helper on Windows PowerShell
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File edge/helper/test-helper.ps1
+
+  publish:
+    needs: [widgets, helper]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: edge-widgets-${{ github.run_number }}
+          path: out
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete edge --cleanup-tag --yes || true
+          gh release create edge out/dist/*.icuewidget out/helper/DayBoardHelper.ps1 \
+            --target "$GITHUB_SHA" \
+            --title "Xeneon Edge widgets (build ${{ github.run_number }})" \
+            --notes "Day Board and Match Board for the CORSAIR Xeneon Edge. Download a .icuewidget file and double-click it (or use the + button in iCUE's Widgets panel). DayBoardHelper.ps1 is only needed if a widget says NO CONNECTION. Built from ${GITHUB_SHA::7}." \
+            --latest=false

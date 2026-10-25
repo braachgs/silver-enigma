@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tr('Match Board')</title>
+  <link rel="icon" type="image/svg+xml" href="resources/matchboard.svg" />
+  <meta name="x-icue-restrictions" data-restrictions='[{ "device": "dashboard_lcd" }]' />
+  <meta name="x-icue-interactive" />
+  <meta name="x-icue-widget-preview" content="resources/preview.png" />
+
+  <meta name="x-icue-property" content="apiKey" data-label="tr('API key')" data-type="textfield" data-default="''" />
+  <meta name="x-icue-property" content="club" data-label="tr('Your club')" data-type="textfield" data-default="'Brentford'" />
+
+  <script id="x-icue-groups" type="application/json">
+  [
+    {
+      "title": "tr('Match Board')",
+      "properties": ["apiKey", "club"],
+      "info": "tr('Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.')"
+    }
+  ]
+  </script>
+
+  <link rel="stylesheet" type="text/css" href="styles/board.css" />
+  <script src="scripts/flapboard.js"></script>
+  <script src="scripts/matches.js"></script>
+  <script src="scripts/net.js"></script>
+</head>
+<body>
+  <canvas id="board" aria-label="Match Board"></canvas>
+  <script>
+    /* Match Board for the Xeneon Edge: the Android widget's board, drawn on
+     * a canvas. Scores are exactly as football-data.org last sent them; the
+     * footer says when that was. */
+
+    icueEvents = {
+      onICUEInitialized: start,
+      onDataUpdated: readSettings
+    };
+
+    // iCUE may inject settings as globals or as locals of a sandbox function.
+    function prop(name) {
+      if (Object.prototype.hasOwnProperty.call(window, name)) return window[name];
+      try { return Function('return typeof ' + name + ' !== "undefined" ? ' + name + ' : undefined')(); } catch (e) { return undefined; }
+    }
+
+    var BASE = 'https://api.football-data.org/v4';
+    var FULL_EVERY = 15 * 60000;
+    var LIVE_EVERY = 60000;
+    var cfg = { apiKey: '', club: 'Brentford' };
+    var bands = [];
+    var shownRows = [];
+    var timer = null;
+    var started = false;
+    var busy = false;
+
+    function storeKey() {
+      var id = prop('uniqueId');
+      return 'matchboard-' + (id || 'standalone');
+    }
+    function load() {
+      try { return JSON.parse(localStorage.getItem(storeKey())) || { sources: {} }; } catch (e) { return { sources: {} }; }
+    }
+    function save(s) {
+      try { localStorage.setItem(storeKey(), JSON.stringify(s)); } catch (e) { /* storage full or blocked: the board still works this session */ }
+    }
+
+    // Every stored response merged, a newer copy of a match replacing an older one.
+    function feed(now) {
+      var s = load();
+      if (!cfg.apiKey) return { matches: [], fetchedAt: null, message: 'ADD YOUR API KEY IN THE WIDGET SETTINGS' };
+      var byId = {};
+      Object.keys(s.sources).map(function (k) { return s.sources[k]; })
+        .sort(function (a, b) { return a.at - b.at; })
+        .forEach(function (src) {
+          try { Matches.parseMatches(src.json).forEach(function (m) { byId[m.id] = m; }); } catch (e) { /* skip a bad copy */ }
+        });
+      var matches = Object.keys(byId).map(function (k) { return byId[k]; }).filter(function (m) { return m.kickoff > now - 8 * Matches.DAY; });
+      var times = ['next', 'today'].map(function (k) { return s.sources[k] && s.sources[k].at; }).filter(Boolean);
+      var fetchedAt = times.length ? Math.max.apply(null, times) : null;
+      // Nothing ever got through: say what would fix it.
+      if (fetchedAt == null && s.error === 'OFFLINE OR BLOCKED') return { matches: [], fetchedAt: null, message: 'NO CONNECTION. IS THE DAY BOARD HELPER RUNNING?' };
+      return { matches: matches, fetchedAt: fetchedAt, error: s.error || null };
+    }
+
+    function followedId(matches) {
+      var t = Matches.findClub(matches, cfg.club);
+      return t ? t.id : null;
+    }
+
+    function ymd(t) { return Matches.dayKey(t); }
+
+    async function api(path) {
+      var r = await EdgeNet.get(BASE + path, { 'X-Auth-Token': cfg.apiKey });
+      var text = await r.text();
+      if (r.ok) return text;
+      var msg = '';
+      try { msg = JSON.parse(text).message || ''; } catch (e) { /* not JSON */ }
+      var label = r.status === 429 ? 'RATE LIMITED'
+        : (r.status === 403 && /restricted/i.test(msg)) ? 'NOT IN YOUR PLAN'
+        : (r.status === 400 || r.status === 401 || r.status === 403) ? 'CHECK API KEY'
+        : r.status >= 500 ? 'SERVER ERROR' : 'UPDATE FAILED';
+      throw new EdgeNet.NetError(label, msg || ('HTTP ' + r.status));
+    }
+
+    // A full update is two requests (the past week and the coming week, each
+    // within the API's date-range limit); a live one fetches today only.
+    async function refresh(liveOnly) {
+      if (!cfg.apiKey || busy) return;
+      busy = true;
+      var s = load();
+      var now = Date.now();
+      var today = Matches.dayStart(now);
+      try {
+        if (liveOnly) {
+          s.sources.today = { json: await api('/competitions/PL/matches?dateFrom=' + ymd(today) + '&dateTo=' + ymd(today)), at: Date.now() };
+        } else {
+          s.sources.next = { json: await api('/competitions/PL/matches?dateFrom=' + ymd(today) + '&dateTo=' + ymd(today + 7 * Matches.DAY)), at: Date.now() };
+          s.sources.past = { json: await api('/competitions/PL/matches?dateFrom=' + ymd(today - 7 * Matches.DAY) + '&dateTo=' + ymd(today - Matches.DAY)), at: Date.now() };
+          delete s.sources.today;
+          save(s);
+          await clubNext(s);
+        }
+        delete s.error;
+      } catch (e) {
+        s.error = e.label || 'UPDATE FAILED';
+        console.warn('Match Board update failed:', e.message);
+      }
+      save(s);
+      busy = false;
+      render();
+      plan();
+    }
+
+    // Your club's next match when it's beyond the coming week (an international break): at most every six hours.
+    async function clubNext(s) {
+      var now = Date.now();
+      var state = feed(now);
+      var id = followedId(state.matches);
+      if (id == null || Matches.pinned(state.matches, id, now)) return;
+      if (s.clubAt && now - s.clubAt < 6 * 3600e3) return;
+      s.clubAt = now;
+      try {
+        s.sources.club = { json: await api('/teams/' + id + '/matches?competitions=PL&status=SCHEDULED,TIMED&limit=3'), at: now };
+      } catch (e) { console.warn('Club fixtures:', e.message); }
+    }
+
+    // Every 15 minutes; every minute while your club's match is live.
+    function plan() {
+      clearTimeout(timer);
+      var now = Date.now();
+      var state = feed(now);
+      var pin = Matches.pinned(state.matches, followedId(state.matches), now);
+      var live = !!(pin && Matches.isLive(pin.status));
+      var last = load();
+      var lastFull = last.sources.next ? last.sources.next.at : 0;
+      var due = Math.max(0, lastFull + FULL_EVERY - now);
+      if (live) {
+        timer = setTimeout(function () { refresh(Date.now() - lastFull < FULL_EVERY); }, Math.min(LIVE_EVERY, due || LIVE_EVERY));
+      } else {
+        // Two minutes after your club kicks off, so LIVE shows promptly.
+        var kick = pin && Matches.isUpcoming(pin.status) && pin.kickoff > now ? pin.kickoff + 2 * 60000 - now : Infinity;
+        timer = setTimeout(function () { refresh(false); }, Math.min(due, kick));
+      }
+    }
+
+    var lastDrawKey = '';
+    function render() {
+      var canvas = document.getElementById('board');
+      var prepared = FlapBoard.prepare(canvas, '"Barlow Condensed Flap", "Arial Narrow", sans-serif');
+      var d = FlapBoard.scaleFor(prepared.w, prepared.h);
+      var l = FlapBoard.matchLayout(prepared.w, prepared.h, d);
+      var now = Date.now();
+      var state = feed(now);
+      var model = Matches.build(state, followedId(state.matches), now, l.capacity);
+      var t = new Date(now);
+      var clock = (t.getHours() % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0');
+      bands = FlapBoard.drawMatchBoard(prepared.p, model, l, clock);
+      shownRows = model.rows;
+      lastDrawKey = Math.floor(now / 60000) + '|' + prepared.w + 'x' + prepared.h;
+    }
+
+    // Tap a match: highlights if finished, Peacock if live or upcoming. Tap the header to update now.
+    function onTap(e) {
+      var rect = e.currentTarget.getBoundingClientRect();
+      var y = e.clientY - rect.top;
+      for (var i = 0; i < bands.length; i++) {
+        if (y >= bands[i][0] && y < bands[i][1]) { openLink(Matches.link(shownRows[i].match)); return; }
+      }
+      if (bands.length === 0 || y < bands[0][0]) refresh(false);
+    }
+    function openLink(url) {
+      if (window.plugins && window.plugins.Linkprovider && typeof pluginLinkprovider_initialized !== 'undefined' && pluginLinkprovider_initialized) {
+        window.plugins.Linkprovider.open(url);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    function readSettings() {
+      var k = prop('apiKey');
+      var c = prop('club');
+      var changed = false;
+      if (k !== undefined && String(k).trim() !== cfg.apiKey) { cfg.apiKey = String(k || '').trim(); changed = true; }
+      if (c !== undefined) cfg.club = String(c || '').trim() || 'Brentford';
+      render();
+      if (changed && started) refresh(false);
+    }
+
+    function onInit() {
+      if (started) { readSettings(); return; }
+      started = true;
+      readSettings();
+      document.getElementById('board').addEventListener('click', onTap);
+      window.addEventListener('resize', render);
+      // The clock and countdown flaps change by the minute; data comes on its own schedule.
+      setInterval(function () {
+        var c = document.getElementById('board');
+        if (Math.floor(Date.now() / 60000) + '|' + c.clientWidth + 'x' + c.clientHeight !== lastDrawKey) render();
+      }, 5000);
+      var last = load().sources.next;
+      if (!last || Date.now() - last.at > FULL_EVERY) refresh(false); else plan();
+    }
+
+    function start() {
+      var go = function () { onInit(); };
+      if (document.fonts && document.fonts.load) document.fonts.load('20px "Barlow Condensed Flap"').then(go, go); else go();
+    }
+
+    if (typeof iCUE_initialized !== 'undefined' && iCUE_initialized) start();
+    if (typeof iCUE_initialized === 'undefined') start(); // outside iCUE, for testing
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+/* Shared by the Edge boards: one canvas filling the widget slot. */
+@font-face {
+  font-family: "Barlow Condensed Flap";
+  src: url("../resources/barlow_condensed_semibold.ttf") format("truetype");
+  font-weight: 600;
+}
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}

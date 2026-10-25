@@ -1,0 +1,18 @@
+{
+  "author": "Day Board",
+  "id": "io.github.braachgs.matchboard",
+  "name": "Match Board",
+  "description": "Premier League matches on a split-flap departure board: kickoff, scores, LIVE, HALF TIME and FULL TIME, with your club pinned on top. Data from football-data.org with your own API key.",
+  "version": "1.0.0",
+  "preview_icon": "resources/icon.png",
+  "min_framework_version": "1.0.0",
+  "min_app_version": "5.52",
+  "os": [{ "platform": "windows" }],
+  "supported_devices": [{ "type": "dashboard_lcd" }],
+  "interactive": true,
+  "required_plugins": ["widgetbuilder.linkprovider:Url:1.0"],
+  "permissions": [
+    { "type": "url", "domain": "api.football-data.org", "port": 443 },
+    { "type": "url", "domain": "localhost", "port": 8577 }
+  ]
+}
