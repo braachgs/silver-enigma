@@ -16,7 +16,7 @@ assemble() { # widget scripts...
   cp common/board.css "build/$w/styles/"
   cp common/resources/* "build/$w/resources/"
 }
-assemble matchboard flapboard.js matches.js net.js
+assemble matchboard flapboard.js matches.js standings.js net.js
 assemble dayboard flapboard.js ics.js departures.js net.js
 
 for w in matchboard dayboard; do

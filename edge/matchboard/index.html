@@ -12,13 +12,14 @@
   <meta name="x-icue-property" content="apiKey" data-label="tr('API key')" data-type="textfield" data-default="''" />
   <meta name="x-icue-property" content="club" data-label="tr('Your club')" data-type="textfield" data-default="'Brentford'" />
   <meta name="x-icue-property" content="boardColor" data-label="tr('Board colour')" data-type="color" data-default="'#0E2A1B'" />
+  <meta name="x-icue-property" content="tableClub" data-label="tr('Championship club')" data-type="textfield" data-default="'Wrexham'" />
 
   <script id="x-icue-groups" type="application/json">
   [
     {
       "title": "tr('Match Board')",
-      "properties": ["apiKey", "club", "boardColor"],
-      "info": "tr('Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.')"
+      "properties": ["apiKey", "club", "boardColor", "tableClub"],
+      "info": "tr('Premier League matches and the Championship table from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row; your Championship club is highlighted in the table. Tap MATCHES or CHAMPIONSHIP at the top to switch; tap the one showing to open that table on Google.')"
     }
   ]
   </script>
@@ -26,6 +27,7 @@
   <link rel="stylesheet" type="text/css" href="styles/board.css" />
   <script src="scripts/flapboard.js"></script>
   <script src="scripts/matches.js"></script>
+  <script src="scripts/standings.js"></script>
   <script src="scripts/net.js"></script>
 </head>
 <body>
@@ -50,7 +52,12 @@
     var FULL_EVERY = 15 * 60000;
     var LIVE_EVERY = 60000;
     var RETRY_EVERY = 2 * 60000;
-    var cfg = { apiKey: '', club: 'Brentford', color: '#0E2A1B' };
+    var cfg = { apiKey: '', club: 'Brentford', color: '#0E2A1B', tableClub: 'Wrexham' };
+    var TABS = ['MATCHES', 'CHAMPIONSHIP'];
+    var TABLES = ['https://www.google.com/search?q=premier+league+table', 'https://www.google.com/search?q=efl+championship+table'];
+    var TABLE_EVERY = 30 * 60000;
+    var tabHits = [];
+    var tableBand = null;
     var bands = [];
     var shownRows = [];
     var timer = null;
@@ -131,10 +138,43 @@
         console.warn('Match Board update failed:', e.message);
       }
       save(s);
+      await table(false);
       busy = false;
       render();
       plan();
     }
+
+    // The Championship table, at most every 30 minutes (or now, [force]). Its
+    // failures are its own: they never mark the match board stale.
+    async function table(force) {
+      var s = load();
+      var now = Date.now();
+      if (!cfg.apiKey || (!force && s.table && now - s.table.at < TABLE_EVERY)) return;
+      try {
+        s.table = { json: await api('/competitions/ELC/standings'), at: Date.now() };
+        delete s.tableError;
+      } catch (e) {
+        s.tableError = e.label || 'UPDATE FAILED';
+        console.warn('Championship table failed:', e.message);
+      }
+      var fresh = load();
+      fresh.table = s.table;
+      if (s.tableError) fresh.tableError = s.tableError; else delete fresh.tableError;
+      save(fresh);
+      render();
+    }
+
+    function tableState() {
+      if (!cfg.apiKey) return { table: [], fetchedAt: null, message: 'ADD YOUR API KEY IN THE WIDGET SETTINGS' };
+      var s = load();
+      var rows = [];
+      try { if (s.table) rows = Standings.parse(s.table.json); } catch (e) { /* a bad copy: as if none */ }
+      if (!s.table && s.tableError === 'OFFLINE OR BLOCKED') return { table: [], fetchedAt: null, message: 'NO CONNECTION. IS THE DAY BOARD HELPER RUNNING?' };
+      return { table: rows, fetchedAt: s.table ? s.table.at : null, error: s.tableError || null };
+    }
+
+    function tab() { return load().tab === 1 ? 1 : 0; }
+    function setTab(t) { var s = load(); s.tab = t; save(s); }
 
     // Your club's next match when it's beyond the coming week (an international break): at most every six hours.
     async function clubNext(s) {
@@ -177,25 +217,53 @@
       var canvas = document.getElementById('board');
       var prepared = FlapBoard.prepare(canvas, '"Barlow Condensed Flap", "Arial Narrow", sans-serif');
       var d = FlapBoard.scaleFor(prepared.w, prepared.h);
-      var l = FlapBoard.matchLayout(prepared.w, prepared.h, d);
       var now = Date.now();
-      var state = feed(now);
-      var model = Matches.build(state, followedId(state.matches), now, l.capacity);
       var t = new Date(now);
       var clock = (t.getHours() % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0');
-      bands = FlapBoard.drawMatchBoard(prepared.p, model, l, clock, cfg.color);
-      shownRows = model.rows;
+      if (tab() === 1) {
+        var tl = FlapBoard.tableLayout(prepared.w, prepared.h, d);
+        tableBand = FlapBoard.drawTable(prepared.p, Standings.build(tableState(), cfg.tableClub, now, tl.capacity), tl, clock, cfg.color, TABS);
+        tabHits = tl.tabHits;
+        bands = [];
+        shownRows = [];
+      } else {
+        var l = FlapBoard.matchLayout(prepared.w, prepared.h, d);
+        var state = feed(now);
+        var model = Matches.build(state, followedId(state.matches), now, l.capacity);
+        bands = FlapBoard.drawMatchBoard(prepared.p, model, l, clock, cfg.color, TABS);
+        tabHits = l.tabHits;
+        tableBand = null;
+        shownRows = model.rows;
+      }
       lastDrawKey = Math.floor(now / 60000) + '|' + prepared.w + 'x' + prepared.h;
     }
 
-    // Tap a match: highlights if finished, Peacock if live or upcoming. Tap the header to update now.
+    /*
+     * Taps. Header: the tab showing opens its league table on Google, the
+     * other switches to it. A match: highlights if finished, Peacock if live
+     * or upcoming. The table: the Championship table on Google. The footer:
+     * update now.
+     */
     function onTap(e) {
       var rect = e.currentTarget.getBoundingClientRect();
+      var x = e.clientX - rect.left;
       var y = e.clientY - rect.top;
+      var l = FlapBoard.matchLayout(rect.width, rect.height, FlapBoard.scaleFor(rect.width, rect.height));
+      if (y < l.ruleY + l.ruleH) {
+        for (var t = 0; t < tabHits.length; t++) {
+          if (x >= tabHits[t][0] && x < tabHits[t][1]) {
+            if (t === tab()) openLink(TABLES[t]);
+            else { setTab(t); render(); if (t === 1 && !load().table) table(true); }
+            return;
+          }
+        }
+        return;
+      }
+      if (y > l.rowsBottom) { refresh(false); return; }
+      if (tableBand) { if (y >= tableBand[0] && y < tableBand[1]) openLink(TABLES[1]); return; }
       for (var i = 0; i < bands.length; i++) {
         if (y >= bands[i][0] && y < bands[i][1]) { openLink(Matches.link(shownRows[i].match)); return; }
       }
-      if (bands.length === 0 || y < bands[0][0]) refresh(false);
     }
     function openLink(url) {
       if (window.plugins && window.plugins.Linkprovider && typeof pluginLinkprovider_initialized !== 'undefined' && pluginLinkprovider_initialized) {
@@ -213,6 +281,8 @@
       var changed = false;
       if (k !== undefined && String(k).trim() !== cfg.apiKey) { cfg.apiKey = String(k || '').trim(); changed = true; }
       if (c !== undefined) cfg.club = String(c || '').trim() || 'Brentford';
+      var tc = prop('tableClub');
+      if (tc !== undefined) cfg.tableClub = String(tc || '').trim() || 'Wrexham';
       render();
       if (changed && started) refresh(false);
     }

@@ -35,6 +35,7 @@
   const COMPACT = {
     'Crystal Palace': 'Palace', "Nott'm Forest": 'Forest', 'Aston Villa': 'Villa', Bournemouth: "B'mouth",
     Southampton: 'Saints', 'Man United': 'Man Utd', Sunderland: "S'land", Tottenham: 'Spurs',
+    Middlesbrough: 'Boro', 'Sheffield Wed': 'Sheff Wed', 'Preston NE': 'Preston', Birmingham: 'Brum', Portsmouth: 'Pompey',
   };
   const clubName = (t) => NAMES[t.shortName] || t.shortName;
   // Words a club name can lose and still be unmistakable: Coventry City -> Coventry.

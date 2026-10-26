@@ -35,6 +35,7 @@ jobs:
           node edge/tests/ics-test.js
           TZ=America/New_York node edge/tests/ics-test.js
           node edge/tests/matches-test.js
+          node edge/tests/standings-test.js
       - name: Validate and package with Corsair's CLI
         run: |
           npm install -g icuewidget-cli@0.5

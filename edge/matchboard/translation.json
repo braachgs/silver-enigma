@@ -3,9 +3,10 @@
     "translation": {
       "API key": "API key",
       "Match Board": "Match Board",
-      "Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.": "Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.",
       "Your club": "Your club",
-      "Board colour": "Board colour"
+      "Board colour": "Board colour",
+      "Championship club": "Championship club",
+      "Premier League matches and the Championship table from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row; your Championship club is highlighted in the table. Tap MATCHES or CHAMPIONSHIP at the top to switch; tap the one showing to open that table on Google.": "Premier League matches and the Championship table from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row; your Championship club is highlighted in the table. Tap MATCHES or CHAMPIONSHIP at the top to switch; tap the one showing to open that table on Google."
     }
   }
 }

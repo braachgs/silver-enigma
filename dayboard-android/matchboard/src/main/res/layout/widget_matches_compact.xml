@@ -13,10 +13,31 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <ImageView
-            android:id="@+id/head"
-            style="@style/MatchSlice"
-            android:contentDescription="@string/widget_description" />
+        <!-- The header, cut into tap zones: the MATCHES tab, the CHAMPIONSHIP
+             tab, and the rest (settings). Android 11 and older get it whole. -->
+        <LinearLayout
+            android:id="@+id/head_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/tab0"
+                style="@style/HeadSlice"
+                android:visibility="gone" />
+            <ImageView
+                android:id="@+id/tab1"
+                style="@style/HeadSlice"
+                android:visibility="gone" />
+            <ImageView
+                android:id="@+id/head"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:scaleType="fitXY"
+                android:contentDescription="@string/widget_description" />
+        </LinearLayout>
 
         <ImageView
             android:id="@+id/row0"

@@ -17,28 +17,48 @@ import kotlin.math.min
  * put kickoff and status on one line and the scoreline under them; wide
  * boards fit a match on one line.
  */
-class MatchLayout(val w: Float, val h: Float, val d: Float) {
+/** What the shared flap drawing (cells, messages, footer, header) needs from a board's layout. */
+interface FlapFrame {
+    val w: Float
+    val h: Float
+    val d: Float
+    val pad: Float
+    val headerH: Float
+    val ruleY: Float
+    val ruleH: Float
+    val gap: Float
+    val contentW: Float
+    val lineGap: Float
+    val rowsTop: Float
+    val footerH: Float
+    val rowsBottom: Float
+    val cw: Float
+    val ch: Float
+    val fontSize: Float
+}
+
+class MatchLayout(override val w: Float, override val h: Float, override val d: Float) : FlapFrame {
     private val compact = h < 190 * d
     /** Tall boards (Edge slots, big widgets) start each day with a line; shorter ones keep the day in the row. */
     val dayLines = h >= 260 * d
-    val pad = (if (compact) 8 else 10) * d
-    val headerH = (if (compact) 20 else 24) * d
-    val ruleY = pad + headerH
-    val ruleH = 2 * d
-    val gap = max(1f, 1f * d)
+    override val pad = (if (compact) 8 else 10) * d
+    override val headerH = (if (compact) 20 else 24) * d
+    override val ruleY = pad + headerH
+    override val ruleH = 2 * d
+    override val gap = max(1f, 1f * d)
     val sectionGap = 6 * d
-    val contentW = w - 2 * pad
+    override val contentW = w - 2 * pad
     val timeCells = 6
     val statusCells = 10
-    val lineGap = 3 * d
+    override val lineGap = 3 * d
     val rowGap = (if (compact) 6 else 8) * d
-    val rowsTop = ruleY + ruleH + (if (compact) 5 else 7) * d
-    val footerH = (if (compact) 14 else 16) * d
-    val rowsBottom = h - pad - footerH
+    override val rowsTop = ruleY + ruleH + (if (compact) 5 else 7) * d
+    override val footerH = (if (compact) 14 else 16) * d
+    override val rowsBottom = h - pad - footerH
 
     val oneLine: Boolean
-    val cw: Float
-    val ch: Float
+    override val cw: Float
+    override val ch: Float
     val nameCells: Int
 
     /** A score tile is a little wider than a flap, so "10" fits. */
@@ -76,7 +96,7 @@ class MatchLayout(val w: Float, val h: Float, val d: Float) {
     /** A day's header line ("SATURDAY 31 OCT") above its first match. */
     val dayH get() = 15 * d
 
-    val fontSize get() = ch * 0.82f
+    override val fontSize get() = ch * 0.82f
     val rowH get() = if (oneLine) ch else ch * 2 + lineGap
 
     companion object {
@@ -104,16 +124,9 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
      * as many rows as fit. [clock] draws the time in the header; the widget
      * leaves it null and lays a TextClock over that corner.
      */
-    fun draw(p: Painter, model: MatchBoardModel, l: MatchLayout, clock: String? = null): List<Band> {
+    fun draw(p: Painter, model: MatchBoardModel, l: MatchLayout, clock: String? = null, tabs: List<String>? = null): List<Band> {
         val d = l.d
-        p.rect(0f, 0f, l.w, l.h, Palette.BACKGROUND, cornerRadius * d)
-
-        val hs = 12 * d
-        val hb = l.pad + l.headerH / 2 + p.capHeight(hs) / 2
-        p.text("MATCHES", l.pad + 2 * d, hb, hs, LABEL, tracking = 0.14f)
-        p.text(model.dayLabel, l.pad + 2 * d + p.measure("MATCHES", hs, 0.14f) + 10 * d, hb, hs, Palette.INK, tracking = 0.1f)
-        if (clock != null) p.text(clock, l.w - l.pad - 2 * d, hb + d, 15 * d, Palette.RULE, Align.RIGHT, 0.04f)
-        p.rect(0f, l.ruleY, l.w, l.ruleH, Palette.RULE)
+        header(p, l, tabs, 0, if (tabs == null) model.dayLabel else null, clock)
 
         val bands = ArrayList<Band>()
         if (model.rows.isEmpty()) {
@@ -199,7 +212,7 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         p.rect(x, y + l.ch / 2 - d * 0.3f, l.scoreW, max(1f, d * 0.6f), Palette.TILE_SPLIT)
     }
 
-    private fun cells(p: Painter, text: String, x: Float, y: Float, n: Int, l: MatchLayout, ink: Int, live: Boolean = false, bold: Boolean = false) {
+    internal fun cells(p: Painter, text: String, x: Float, y: Float, n: Int, l: FlapFrame, ink: Int, live: Boolean = false, bold: Boolean = false) {
         val d = l.d
         val top = if (live) Palette.LIVE_TOP else Palette.CELL_TOP
         val bottom = if (live) Palette.LIVE_BOTTOM else Palette.CELL_BOTTOM
@@ -222,7 +235,7 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         }
     }
 
-    private fun drawMessage(p: Painter, message: String, l: MatchLayout) {
+    internal fun drawMessage(p: Painter, message: String, l: FlapFrame) {
         val n = floor((l.contentW + l.gap) / (l.cw + l.gap)).toInt()
         val lines = BoardRenderer.wrap(Flap.clean(message).trim(), n).take(2)
         val blockH = lines.size * l.ch + (lines.size - 1) * l.lineGap
@@ -233,17 +246,56 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         }
     }
 
-    private fun drawFooter(p: Painter, model: MatchBoardModel, l: MatchLayout, moreCount: Int) {
+    private fun drawFooter(p: Painter, model: MatchBoardModel, l: MatchLayout, moreCount: Int) =
+        footer(p, l, model.footer, if (moreCount > 0) "+$moreCount MORE" else "", model.footer.contains("·"))
+
+    /** The left of the footer ("AS OF 3:05 PM", amber when stale) and its right ("+5 MORE"). */
+    internal fun footer(p: Painter, l: FlapFrame, left: String, right: String, stale: Boolean) {
         val d = l.d
         val size = 12 * d
         val baseline = l.h - l.pad - (l.footerH - p.capHeight(size)) / 2
-        val more = if (moreCount > 0) "+$moreCount MORE" else ""
-        val moreW = if (more.isEmpty()) 0f else p.measure(more, size, 0.08f)
-        if (more.isNotEmpty()) p.text(more, l.w - l.pad, baseline, size, LABEL, Align.RIGHT, 0.08f)
-        val maxW = l.contentW - moreW - if (more.isEmpty()) 0f else 12 * d
-        val stale = model.footer.contains("·")
-        p.text(BoardRenderer.ellipsize(p, model.footer, size, maxW, 0.08f), l.pad, baseline, size,
+        val rightW = if (right.isEmpty()) 0f else p.measure(right, size, 0.08f)
+        if (right.isNotEmpty()) p.text(right, l.w - l.pad, baseline, size, LABEL, Align.RIGHT, 0.08f)
+        val maxW = l.contentW - rightW - if (right.isEmpty()) 0f else 12 * d
+        p.text(BoardRenderer.ellipsize(p, left, size, maxW, 0.08f), l.pad, baseline, size,
             if (stale) Palette.ink(Tone.BOARDING) else LABEL, tracking = 0.08f)
+    }
+
+    /**
+     * Where each header tab was drawn on the last [draw]: [from, to) in x,
+     * for the widget's tap zones. Empty without tabs.
+     */
+    var tabHits: List<Pair<Float, Float>> = emptyList()
+        private set
+
+    /**
+     * The background, the header and the amber rule. With [tabs], the header
+     * shows them ("MATCHES  CHAMPIONSHIP"), [active] bright and underlined;
+     * without, "MATCHES" and [dayLabel].
+     */
+    internal fun header(p: Painter, l: FlapFrame, tabs: List<String>?, active: Int, dayLabel: String?, clock: String?) {
+        val d = l.d
+        p.rect(0f, 0f, l.w, l.h, Palette.BACKGROUND, cornerRadius * d)
+        val hs = 12 * d
+        val hb = l.pad + l.headerH / 2 + p.capHeight(hs) / 2
+        if (tabs == null) {
+            tabHits = emptyList()
+            p.text("MATCHES", l.pad + 2 * d, hb, hs, LABEL, tracking = 0.14f)
+            if (dayLabel != null) p.text(dayLabel, l.pad + 2 * d + p.measure("MATCHES", hs, 0.14f) + 10 * d, hb, hs, Palette.INK, tracking = 0.1f)
+        } else {
+            val hits = ArrayList<Pair<Float, Float>>()
+            var x = l.pad + 2 * d
+            tabs.forEachIndexed { i, t ->
+                val w = p.measure(t, hs, 0.14f)
+                p.text(t, x, hb, hs, if (i == active) Palette.INK else LABEL, tracking = 0.14f)
+                if (i == active) p.rect(x, hb + 3 * d, w, 2 * d, Palette.RULE, d)
+                hits += (x - 6 * d) to (x + w + 6 * d)
+                x += w + 16 * d
+            }
+            tabHits = hits
+        }
+        if (clock != null) p.text(clock, l.w - l.pad - 2 * d, hb + d, 15 * d, Palette.RULE, Align.RIGHT, 0.04f)
+        p.rect(0f, l.ruleY, l.w, l.ruleH, Palette.RULE)
     }
 
     companion object {

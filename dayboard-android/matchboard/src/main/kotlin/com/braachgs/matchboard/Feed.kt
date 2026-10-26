@@ -30,6 +30,7 @@ object Feed {
                 Store.put(c, Store.PAST, Api.get(matches(today.minusDays(7), today.minusDays(1)), key), System.currentTimeMillis())
                 clubNext(c, key, zone)
             }
+            table(c, key)
             null
         } catch (e: ApiError) {
             Log.w("MatchBoard", "update failed: ${e.label}: ${e.message}")
@@ -56,6 +57,23 @@ object Feed {
         runCatching {
             Store.put(c, Store.CLUB, Api.get("/teams/$club/matches?competitions=PL&status=SCHEDULED,TIMED&limit=3", key), now)
         }.onFailure { Log.w("MatchBoard", "club fixtures: ${it.message}") }
+    }
+
+    /**
+     * The Championship table, at most every 30 minutes. A failure here is
+     * the table tab's own: it never marks the match board stale.
+     */
+    fun table(c: Context, key: String, force: Boolean = false) {
+        if (!force && System.currentTimeMillis() - Store.tableAt(c) < 30 * 60_000L) return
+        try {
+            Store.putTable(c, Api.get("/competitions/ELC/standings", key), System.currentTimeMillis())
+        } catch (e: ApiError) {
+            Log.w("MatchBoard", "table failed: ${e.label}: ${e.message}")
+            Store.setTableError(c, e.label)
+        } catch (e: Exception) {
+            Log.w("MatchBoard", "table failed", e)
+            Store.setTableError(c, "UPDATE FAILED")
+        }
     }
 
     /** The Premier League's clubs, for the picker. */

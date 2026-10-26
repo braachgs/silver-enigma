@@ -103,6 +103,13 @@ object Clubs {
         "Sunderland" to "S'land",
         "Tottenham" to "Spurs",
         "Newcastle" to "Newcastle",
+        "Middlesbrough" to "Boro",
+        "Sheffield Wed" to "Sheff Wed",
+        "Sheff Utd" to "Sheff Utd",
+        "Preston NE" to "Preston",
+        "Birmingham" to "Brum",
+        "Portsmouth" to "Pompey",
+        "West Brom" to "West Brom",
     )
 
     fun name(t: Team): String = names[t.shortName] ?: t.shortName

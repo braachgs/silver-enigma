@@ -11,6 +11,7 @@ let fails = 0;
 const ok = (c, m) => { console.log(`${c ? 'ok' : 'FAIL'}: ${m}`); if (!c) fails++; };
 const NOW = Date.parse('2026-10-25T14:40:00Z');
 const PL = fs.readFileSync(path.join(__dirname, '../../dayboard-android/core/src/test/resources/pl-matches.json'), 'utf8');
+const ELC = fs.readFileSync(path.join(__dirname, '../../dayboard-android/core/src/test/resources/elc-standings.json'), 'utf8');
 const SLOTS = { VS: [697, 417], VM: [697, 841], VL: [697, 1689], VXL: [697, 2537], HM: [841, 697], HS: [841, 345] };
 
 const ICAL = [
@@ -51,7 +52,8 @@ const server = http.createServer((req, res) => {
     p.on('pageerror', (e) => errors.push(`${widget}: ${e.message}`));
     await p.addInitScript((s) => { Object.assign(window, s); window.__opened = []; window.open = (u) => window.__opened.push(u); }, settings);
     const calls = { direct: 0, helper: 0, keys: [] };
-    const answer = (url) => (url.includes('football-data.org') ? { body: PL, type: 'application/json' }
+    const answer = (url) => (url.includes('/standings') ? { body: ELC, type: 'application/json' }
+      : url.includes('football-data.org') ? { body: PL, type: 'application/json' }
       : url.includes('me%40work.com') ? { body: WORK, type: 'text/calendar' } : { body: ICAL, type: 'text/calendar' });
     await p.route(/api\.football-data\.org|calendar\.google\.com/, (r) => {
       calls.direct++;
@@ -129,6 +131,30 @@ const server = http.createServer((req, res) => {
     const at2 = await p.evaluate(() => JSON.parse(localStorage.getItem('matchboard-standalone')).attemptAt);
     ok(at1 === before && at2 > before && at2 - before >= 120000, `after a failure it retries in two minutes, not at once (${(at2 - before) / 1000}s)`);
     await p.screenshot({ path: `${OUT}/match-blocked.png` });
+    await ctx.close();
+  }
+  for (const name of ['VM', 'VXL', 'HS']) {
+    // Tabs: MATCHES (showing) opens Google's PL table; CHAMPIONSHIP switches to the table.
+    const { ctx, p, calls } = await open('matchboard', SLOTS[name], MB);
+    const hits = await p.evaluate(() => tabHits);
+    const headY = await p.evaluate(() => { const d = FlapBoard.scaleFor(innerWidth, innerHeight); const l = FlapBoard.matchLayout(innerWidth, innerHeight, d); return l.pad + l.headerH / 2; });
+    ok(hits.length === 2, `${name}: two tabs in the header`);
+    await p.mouse.click((hits[0][0] + hits[0][1]) / 2, headY);
+    await p.mouse.click((hits[1][0] + hits[1][1]) / 2, headY);
+    await p.waitForTimeout(300);
+    const s = await p.evaluate(() => ({ tab: JSON.parse(localStorage.getItem('matchboard-standalone')).tab, table: !!JSON.parse(localStorage.getItem('matchboard-standalone')).table, band: tableBand, opened: window.__opened }));
+    ok(s.opened[0] === 'https://www.google.com/search?q=premier+league+table', `${name}: MATCHES opens the Premier League table (${s.opened[0]})`);
+    ok(s.tab === 1 && s.table && s.band, `${name}: CHAMPIONSHIP shows the table`);
+    await p.screenshot({ path: `${OUT}/table-${name}.png` });
+    const model = await p.evaluate(() => { const d = FlapBoard.scaleFor(innerWidth, innerHeight); const l = FlapBoard.tableLayout(innerWidth, innerHeight, d); return Standings.build(tableState(), 'Wrexham', Date.now(), l.capacity); });
+    ok(model.rows.some((r) => r.favourite && r.standing.team.name.includes('Wrexham')) && /^WREXHAM \d+(ST|ND|RD|TH)$/.test(model.favouriteLine), `${name}: Wrexham highlighted (${model.rows.length} of ${model.total}, ${model.favouriteLine})`);
+    await p.mouse.click((hits[1][0] + hits[1][1]) / 2, headY);
+    await p.mouse.click(300, (s.band[0] + s.band[1]) / 2);
+    const opened = await p.evaluate(() => window.__opened);
+    ok(opened[1] === 'https://www.google.com/search?q=efl+championship+table' && opened[2] === opened[1], `${name}: CHAMPIONSHIP and the table open Google's Championship table`);
+    await p.mouse.click((hits[0][0] + hits[0][1]) / 2, headY);
+    ok(await p.evaluate(() => JSON.parse(localStorage.getItem('matchboard-standalone')).tab === 0 && bands.length > 0), `${name}: back to MATCHES`);
+    ok(calls.keys.every((k) => k === MB.apiKey), `${name}: standings fetched with the key`);
     await ctx.close();
   }
   {

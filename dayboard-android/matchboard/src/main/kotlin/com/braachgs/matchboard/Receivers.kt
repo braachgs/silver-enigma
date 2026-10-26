@@ -35,6 +35,25 @@ class MatchWidget : AppWidgetProvider() {
         if (Store.apiKey(c).isNotEmpty() && (asOf == null || System.currentTimeMillis() - asOf > 15 * 60_000)) Refresh.now(c)
     }
 
+    /** A header tab was tapped: show that tab on that widget. */
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Widgets.ACTION_TAB) {
+            val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            val tab = intent.getIntExtra(Widgets.EXTRA_TAB, 0).coerceIn(0, 1)
+            if (id != AppWidgetManager.INVALID_APPWIDGET_ID) inBackground(context) { c ->
+                Store.setTab(c, id, tab)
+                Widgets.updateAll(c)
+                // First look at the table with nothing stored: fetch it now.
+                if (tab == 1 && Store.apiKey(c).isNotEmpty() && Store.tableAt(c) == 0L) {
+                    Feed.table(c, Store.apiKey(c), force = true)
+                    Widgets.updateAll(c)
+                }
+            }
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) =
         inBackground(context) { Widgets.updateAll(it) } // resized
 

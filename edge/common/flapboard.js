@@ -204,15 +204,33 @@
     };
   }
 
+  /**
+   * Background, header and rule. [title] is a string ("DEPARTURES" then
+   * [label]) or tabs { names, active }: the active one bright and underlined.
+   * Returns each tab's [from, to) in x, for taps.
+   */
   function header(p, l, title, label, clock) {
     const d = l.d;
     p.rect(0, 0, l.w, l.h, l.theme.bg, l.radius * d);
     const hs = 12 * d;
     const hb = l.pad + l.headerH / 2 + p.capHeight(hs) / 2;
-    p.text(title, l.pad + 2 * d, hb, hs, l.labelInk || Palette.DIM, 'left', 0.14);
-    p.text(label, l.pad + 2 * d + p.measure(title, hs, 0.14) + 10 * d, hb, hs, Palette.INK, 'left', 0.1);
+    const hits = [];
+    if (typeof title === 'string') {
+      p.text(title, l.pad + 2 * d, hb, hs, l.labelInk || Palette.DIM, 'left', 0.14);
+      if (label) p.text(label, l.pad + 2 * d + p.measure(title, hs, 0.14) + 10 * d, hb, hs, Palette.INK, 'left', 0.1);
+    } else {
+      let x = l.pad + 2 * d;
+      title.names.forEach((t, i) => {
+        const w = p.measure(t, hs, 0.14);
+        p.text(t, x, hb, hs, i === title.active ? Palette.INK : (l.labelInk || Palette.DIM), 'left', 0.14);
+        if (i === title.active) p.rect(x, hb + 3 * d, w, 2 * d, Palette.RULE, d);
+        hits.push([x - 6 * d, x + w + 6 * d]);
+        x += w + 16 * d;
+      });
+    }
     if (clock) p.text(clock, l.w - l.pad - 2 * d, hb + d, 15 * d, Palette.RULE, 'right', 0.04);
     p.rect(0, l.ruleY, l.w, l.ruleH, Palette.RULE);
+    return hits;
   }
 
   function message(p, msg, l) {
@@ -378,10 +396,10 @@
    *          homeScore, awayScore, winner: 'HOME'|'AWAY'|'DRAW'|null, done }], message, footer, stale, more }
    * Returns each row's band [top, bottom] in canvas units, for taps.
    */
-  function drawMatchBoard(p, model, l, clock, background) {
+  function drawMatchBoard(p, model, l, clock, background, tabs) {
     const d = l.d;
     l.theme = theme(background || MATCH_BG);
-    header(p, l, 'MATCHES', model.dayLabel, clock);
+    l.tabHits = header(p, l, tabs ? { names: tabs, active: 0 } : 'MATCHES', tabs ? null : model.dayLabel, clock);
     const bands = [];
     if (!model.rows.length) message(p, model.message || 'NO MATCHES', l);
     let y = l.rowsTop;
@@ -430,6 +448,80 @@
     return bands;
   }
 
+  // ---------------------------------------------------------- the table
+  /** A league table: one line per club, POS CLUB P GD PTS (dayboard.match.TableLayout). */
+  function tableLayout(w, h, d) {
+    const l = frame(w, h, d);
+    l.rowGap = (l.compact ? 3 : 4) * d;
+    l.colHeadH = 13 * d;
+    l.rowsTop = l.ruleY + l.ruleH + (l.compact ? 4 : 6) * d;
+    l.posCells = 2; l.playedCells = 2; l.gdCells = 3; l.ptsCells = 3;
+    const fixed = l.posCells + l.playedCells + l.gdCells + l.ptsCells;
+    const target = 12;
+    const c = (l.contentW - 4 * l.sectionGap - (fixed + target) * l.gap) / (fixed + target);
+    l.cw = Math.min(12 * d, Math.max(6.5 * d, c));
+    l.ch = l.cw * ASPECT;
+    l.nameCells = Math.floor((l.contentW - 4 * l.sectionGap - fixed * (l.cw + l.gap) + l.gap) / (l.cw + l.gap));
+    l.fontSize = l.ch * 0.82;
+    l.rowH = l.ch;
+    l.firstRowTop = l.rowsTop + l.colHeadH;
+    l.capacity = Math.max(1, Math.floor((l.rowsBottom - l.firstRowTop + l.rowGap) / (l.rowH + l.rowGap)));
+    l.posX = l.pad;
+    l.nameX = l.posX + l.posCells * (l.cw + l.gap) + l.sectionGap;
+    l.ptsX = l.w - l.pad - l.ptsCells * (l.cw + l.gap) + l.gap;
+    l.gdX = l.ptsX - l.sectionGap - l.gdCells * (l.cw + l.gap);
+    l.playedX = l.gdX - l.sectionGap - l.playedCells * (l.cw + l.gap);
+    l.dimBlank = true;
+    l.labelInk = LABEL;
+    l.footerSize = 12;
+    return l;
+  }
+
+  const ZONE = { PROMOTED: '#2E8540', PLAYOFF: '#93DD73', RELEGATED: '#C8102E' };
+
+  /**
+   * model: Standings.build(...). Draws under the tabbed header; returns the
+   * table body's band [top, bottom] (one tap target) or null.
+   */
+  function drawTable(p, model, l, clock, background, tabs) {
+    const d = l.d;
+    l.theme = theme(background || MATCH_BG);
+    l.tabHits = header(p, l, { names: tabs, active: 1 }, null, clock);
+    if (!model.rows.length) {
+      message(p, model.message || 'NO TABLE YET', l);
+      footer(p, l, model.footer, model.favouriteLine, model.stale ? Palette.ink('BOARDING') : LABEL);
+      return null;
+    }
+    const size = 10.5 * d;
+    const lb = l.rowsTop + l.colHeadH / 2 + p.capHeight(size) / 2 - d;
+    const mid = (x, n) => x + n * (l.cw + l.gap) / 2;
+    p.text('POS', mid(l.posX, l.posCells), lb, size, LABEL, 'center', 0.1);
+    p.text('CLUB', l.nameX, lb, size, LABEL, 'left', 0.1);
+    p.text('P', mid(l.playedX, l.playedCells), lb, size, LABEL, 'center', 0.1);
+    p.text('GD', mid(l.gdX, l.gdCells), lb, size, LABEL, 'center', 0.1);
+    p.text('PTS', mid(l.ptsX, l.ptsCells), lb, size, LABEL, 'center', 0.1);
+    let y = l.firstRowTop;
+    let last = null;
+    for (const row of model.rows) {
+      const s = row.standing;
+      // A line where a zone ends: under 2nd, 6th and 21st.
+      if (last && last.zone !== row.zone) p.rect(l.pad, y - l.rowGap / 2 - d / 2, l.contentW, Math.max(1, d * 0.75), l.theme.divider);
+      if (row.favourite) p.rect(l.pad - 4 * d, y - 2 * d, l.contentW + 8 * d, l.rowH + 4 * d, l.theme.pin, 3 * d);
+      if (ZONE[row.zone]) p.rect(l.pad - 7 * d, y, 3 * d, l.rowH, ZONE[row.zone], 1.5 * d);
+      if (row.favourite) p.rect(l.pad - 7 * d, y - 2 * d, 3 * d, l.rowH + 4 * d, Palette.RULE, 1.5 * d);
+      cells(p, String(s.position).padStart(l.posCells), l.posX, y, l.posCells, l, LABEL);
+      cells(p, Flap.clean(root.Matches.fitName(s.team, l.nameCells)).padEnd(l.nameCells), l.nameX, y, l.nameCells, l, row.favourite ? Palette.RULE : Palette.INK);
+      cells(p, String(s.played).padStart(l.playedCells), l.playedX, y, l.playedCells, l, Palette.ink('INFO'));
+      cells(p, (s.goalDifference > 0 ? `+${s.goalDifference}` : String(s.goalDifference)).padStart(l.gdCells), l.gdX, y, l.gdCells, l, Palette.ink('INFO'));
+      cells(p, String(s.points).padStart(l.ptsCells), l.ptsX, y, l.ptsCells, l, Palette.RULE);
+      y += l.rowH + l.rowGap;
+      last = row;
+    }
+    const more = model.total - model.rows.length;
+    footer(p, l, model.footer, model.favouriteLine || (more > 0 ? `+${more} MORE` : ''), model.stale ? Palette.ink('BOARDING') : LABEL);
+    return [l.rowsTop, y - l.rowGap / 2];
+  }
+
   // ------------------------------------------------------------ helpers
   /** dp scale for a board [w] css px wide: about a 360dp phone widget across a portrait Edge slot. */
   function scaleFor(w, h) {
@@ -452,7 +544,7 @@
     return { p: CanvasPainter(ctx, family), w, h };
   }
 
-  const api = { Palette, Flap, ellipsize, wrap, CanvasPainter, dayLayout, drawDayBoard, matchLayout, drawMatchBoard, scaleFor, prepare, MATCH_BG, theme, mix };
+  const api = { Palette, Flap, ellipsize, wrap, CanvasPainter, dayLayout, drawDayBoard, matchLayout, drawMatchBoard, tableLayout, drawTable, scaleFor, prepare, MATCH_BG, theme, mix };
   root.FlapBoard = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

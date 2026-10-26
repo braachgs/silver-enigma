@@ -71,6 +71,7 @@ class SettingsActivity : Activity() {
         keySection()
         if (Store.apiKey(this).isNotEmpty()) {
             clubSection()
+            tableSection()
             statusSection()
         }
 
@@ -159,6 +160,29 @@ class SettingsActivity : Activity() {
             }
         }
         content.addView(spinner, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    }
+
+    /** The CHAMPIONSHIP tab: which club to highlight. */
+    private fun tableSection() {
+        content.addView(cap("CHAMPIONSHIP CLUB"))
+        content.addView(text("Highlighted on the CHAMPIONSHIP tab (tap the tab names at the top of the widget to switch). Name, short name or code: Wrexham, Boro, WRE.", 13f, dim).apply {
+            setPadding(0, 0, 0, dp(8))
+        })
+        val field = EditText(this).apply {
+            setText(Store.tableClub(this@SettingsActivity))
+            setTextColor(ink)
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        }
+        content.addView(field, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(button("Save club", primary = false) {
+            Store.setTableClub(this, field.text.toString())
+            worker.execute {
+                Feed.table(this, Store.apiKey(this), force = Store.tableAt(this) == 0L)
+                Widgets.updateAll(this)
+                main.post { toast("Saved."); build() }
+            }
+        }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8) })
     }
 
     private fun statusSection() {

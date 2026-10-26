@@ -3,7 +3,7 @@
   "id": "io.github.braachgs.dayboard",
   "name": "Day Board",
   "description": "Your calendars as a split-flap departure board: today's events with ON TIME, BOARDING, FINAL CALL and NOW, then tomorrow's. Reads Google Calendar's secret iCal addresses: no sign-in, no reconnecting.",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "preview_icon": "resources/icon.png",
   "min_framework_version": "1.0.0",
   "min_app_version": "5.52",

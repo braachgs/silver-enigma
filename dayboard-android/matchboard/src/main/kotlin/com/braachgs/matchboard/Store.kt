@@ -4,6 +4,8 @@ import android.content.Context
 import dayboard.match.FeedState
 import dayboard.match.FootballData
 import dayboard.match.Match
+import dayboard.match.Standings
+import dayboard.match.TableState
 import dayboard.match.Team
 
 /**
@@ -55,6 +57,35 @@ object Store {
 
     fun clubFetchedAt(c: Context): Long = prefs(c).getLong(CLUB_AT, 0)
     fun setClubFetchedAt(c: Context, at: Long) { prefs(c).edit().putLong(CLUB_AT, at).apply() }
+
+    // ---------------------------------------------------------------- the table tab
+
+    /** Which tab a widget shows: 0 matches, 1 the Championship table. */
+    fun tab(c: Context, widgetId: Int): Int = prefs(c).getInt("tab_$widgetId", 0)
+    fun setTab(c: Context, widgetId: Int, tab: Int) { prefs(c).edit().putInt("tab_$widgetId", tab).apply() }
+
+    /** The Championship club to highlight (default Wrexham). */
+    fun tableClub(c: Context): String = prefs(c).getString(TABLE_CLUB, null)?.trim()?.ifEmpty { null } ?: "Wrexham"
+    fun setTableClub(c: Context, club: String) { prefs(c).edit().putString(TABLE_CLUB, club.trim()).apply() }
+
+    fun putTable(c: Context, json: String, at: Long) {
+        prefs(c).edit().putString(TABLE, json).putLong(TABLE_AT, at).remove(TABLE_ERROR).apply()
+    }
+    fun tableAt(c: Context): Long = prefs(c).getLong(TABLE_AT, 0)
+    fun setTableError(c: Context, label: String) { prefs(c).edit().putString(TABLE_ERROR, label).apply() }
+
+    /** The last Championship table fetched, exactly as sent, and how the latest attempt went. */
+    fun table(c: Context): TableState {
+        if (apiKey(c).isEmpty()) return TableState(emptyList(), null, message = "ADD YOUR API KEY IN MATCH BOARD")
+        val p = prefs(c)
+        val rows = p.getString(TABLE, null)?.let { runCatching { Standings.parse(it) }.getOrNull() } ?: emptyList()
+        return TableState(rows, tableAt(c).takeIf { it > 0 }, error = p.getString(TABLE_ERROR, null))
+    }
+
+    private const val TABLE = "elc"
+    private const val TABLE_AT = "elc_at"
+    private const val TABLE_ERROR = "elc_error"
+    private const val TABLE_CLUB = "elc_club"
 
     fun error(c: Context): String? = prefs(c).getString(ERROR, null)
     fun setError(c: Context, label: String) { prefs(c).edit().putString(ERROR, label).apply() }
