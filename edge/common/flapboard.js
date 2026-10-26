@@ -141,6 +141,7 @@
     return {
       w, h, d, compact, pad, headerH, ruleY, ruleH,
       radius: 12, // dp; iCUE draws its own slot corners around this
+      theme: theme(Palette.BACKGROUND),
       gap: Math.max(1, d),
       sectionGap: 6 * d,
       contentW: w - 2 * pad,
@@ -172,9 +173,23 @@
     }
   }
 
+  /** Blend two #RRGGBB colours: [t] = 0 gives [a], 1 gives [b]. */
+  function mix(a, b, t) {
+    const x = parseInt(a.slice(1, 7), 16);
+    const y = parseInt(b.slice(1, 7), 16);
+    const ch = (sh) => Math.round(((x >> sh) & 255) * (1 - t) + ((y >> sh) & 255) * t);
+    return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
+  }
+
+  /** A board's background, with its dividers and pinned-row shade worked out from it. */
+  function theme(bg) {
+    const base = /^#[0-9a-f]{6}/i.test(bg || '') ? bg.slice(0, 7) : Palette.BACKGROUND;
+    return { bg: base, divider: mix(base, '#FFFFFF', 0.07), pin: mix(base, Palette.RULE, 0.07) };
+  }
+
   function header(p, l, title, label, clock) {
     const d = l.d;
-    p.rect(0, 0, l.w, l.h, Palette.BACKGROUND, l.radius * d);
+    p.rect(0, 0, l.w, l.h, l.theme.bg, l.radius * d);
     const hs = 12 * d;
     const hb = l.pad + l.headerH / 2 + p.capHeight(hs) / 2;
     p.text(title, l.pad + 2 * d, hb, hs, Palette.DIM, 'left', 0.14);
@@ -207,7 +222,7 @@
   }
 
   function divider(p, l, y) {
-    p.rect(l.pad, y - l.rowGap / 2 - l.d / 2, l.contentW, Math.max(1, l.d * 0.75), Palette.DIVIDER);
+    p.rect(l.pad, y - l.rowGap / 2 - l.d / 2, l.contentW, Math.max(1, l.d * 0.75), l.theme.divider);
   }
 
   // ---------------------------------------------------------- Day Board
@@ -329,13 +344,17 @@
     p.rect(x, y + l.ch / 2 - d * 0.3, l.scoreW, Math.max(1, d * 0.6), Palette.TILE_SPLIT);
   }
 
+  /** Match Board's own colour, so it stands apart from Day Board: a dark pitch green. */
+  const MATCH_BG = '#0E2A1B';
+
   /**
    * model: { dayLabel, rows: [{ time, status: {text, tone}, section, pinned, home, away,
    *          homeScore, awayScore, winner: 'HOME'|'AWAY'|'DRAW'|null, done }], message, footer, stale, more }
    * Returns each row's band [top, bottom] in canvas units, for taps.
    */
-  function drawMatchBoard(p, model, l, clock) {
+  function drawMatchBoard(p, model, l, clock, background) {
     const d = l.d;
+    l.theme = theme(background || MATCH_BG);
     header(p, l, 'MATCHES', model.dayLabel, clock);
     const bands = [];
     if (!model.rows.length) message(p, model.message || 'NO MATCHES', l);
@@ -343,7 +362,7 @@
       const y = l.rowsTop + i * (l.rowH + l.rowGap);
       if (i > 0) divider(p, l, y);
       if (row.pinned) {
-        p.rect(l.pad - 4 * d, y - 3 * d, l.contentW + 8 * d, l.rowH + 6 * d, Palette.PIN_BG, 3 * d);
+        p.rect(l.pad - 4 * d, y - 3 * d, l.contentW + 8 * d, l.rowH + 6 * d, l.theme.pin, 3 * d);
         p.rect(l.pad - 7 * d, y - 3 * d, 3 * d, l.rowH + 6 * d, Palette.RULE, 1.5 * d);
       }
       const upcomingInk = row.section === 'UPCOMING' ? Palette.ink('INFO') : Palette.INK;
@@ -385,7 +404,7 @@
     return { p: CanvasPainter(ctx, family), w, h };
   }
 
-  const api = { Palette, Flap, ellipsize, wrap, CanvasPainter, dayLayout, drawDayBoard, matchLayout, drawMatchBoard, scaleFor, prepare };
+  const api = { Palette, Flap, ellipsize, wrap, CanvasPainter, dayLayout, drawDayBoard, matchLayout, drawMatchBoard, scaleFor, prepare, MATCH_BG, theme, mix };
   root.FlapBoard = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -11,12 +11,13 @@
 
   <meta name="x-icue-property" content="apiKey" data-label="tr('API key')" data-type="textfield" data-default="''" />
   <meta name="x-icue-property" content="club" data-label="tr('Your club')" data-type="textfield" data-default="'Brentford'" />
+  <meta name="x-icue-property" content="boardColor" data-label="tr('Board colour')" data-type="color" data-default="'#0E2A1B'" />
 
   <script id="x-icue-groups" type="application/json">
   [
     {
       "title": "tr('Match Board')",
-      "properties": ["apiKey", "club"],
+      "properties": ["apiKey", "club", "boardColor"],
       "info": "tr('Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.')"
     }
   ]
@@ -49,7 +50,7 @@
     var FULL_EVERY = 15 * 60000;
     var LIVE_EVERY = 60000;
     var RETRY_EVERY = 2 * 60000;
-    var cfg = { apiKey: '', club: 'Brentford' };
+    var cfg = { apiKey: '', club: 'Brentford', color: '#0E2A1B' };
     var bands = [];
     var shownRows = [];
     var timer = null;
@@ -182,7 +183,7 @@
       var model = Matches.build(state, followedId(state.matches), now, l.capacity);
       var t = new Date(now);
       var clock = (t.getHours() % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0');
-      bands = FlapBoard.drawMatchBoard(prepared.p, model, l, clock);
+      bands = FlapBoard.drawMatchBoard(prepared.p, model, l, clock, cfg.color);
       shownRows = model.rows;
       lastDrawKey = Math.floor(now / 60000) + '|' + prepared.w + 'x' + prepared.h;
     }
@@ -207,6 +208,8 @@
     function readSettings() {
       var k = prop('apiKey');
       var c = prop('club');
+      var bc = prop('boardColor');
+      if (bc) cfg.color = String(bc);
       var changed = false;
       if (k !== undefined && String(k).trim() !== cfg.apiKey) { cfg.apiKey = String(k || '').trim(); changed = true; }
       if (c !== undefined) cfg.club = String(c || '').trim() || 'Brentford';

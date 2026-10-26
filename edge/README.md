@@ -8,7 +8,7 @@ widgets: the renderer, colours, flap font and board logic are ports of
 | Widget | Data | Settings (in iCUE) |
 |---|---|---|
 | **Day Board** | Google Calendar's *secret address in iCal format*, up to four calendars, read every 10 minutes. No sign-in, no reconnecting. | Clock (12/24 h); per calendar: the address, a 3-letter line code, a line colour |
-| **Match Board** | football-data.org v4, competition PL, with your own API key. Every 15 minutes; every minute while your club is live. | API key; your club (name, short name or code: Brentford, Spurs, BRE) |
+| **Match Board** | football-data.org v4, competition PL, with your own API key. Every 15 minutes; every minute while your club is live. | API key; your club (name, short name or code: Brentford, Spurs, BRE); board colour (pitch green by default, so it stands apart from Day Board's charcoal) |
 
 Both fit every Edge slot size, portrait or landscape: a VL (696x1688) slot
 shows about ten matches or departures. Match Board rows are tappable:

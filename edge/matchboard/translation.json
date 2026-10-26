@@ -4,7 +4,8 @@
       "API key": "API key",
       "Match Board": "Match Board",
       "Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.": "Premier League matches from football-data.org. Paste your API key; it stays in iCUE on this PC. Your club (for example Brentford, Spurs or BRE) is pinned to the top row.",
-      "Your club": "Your club"
+      "Your club": "Your club",
+      "Board colour": "Board colour"
     }
   }
 }
