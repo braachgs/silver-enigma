@@ -37,11 +37,21 @@
     Southampton: 'Saints', 'Man United': 'Man Utd', Sunderland: "S'land", Tottenham: 'Spurs',
   };
   const clubName = (t) => NAMES[t.shortName] || t.shortName;
+  // Words a club name can lose and still be unmistakable: Coventry City -> Coventry.
+  const SUFFIX = /\s+(City|Town|United|Utd|Athletic|Albion|Rovers|Wanderers|County|FC|AFC)$/i;
+  /** Full name, then a common short form, then without a generic last word, then the code. */
   function fitName(t, cells) {
     const full = clubName(t);
     if (full.length <= cells) return full;
     const short = COMPACT[full];
     if (short && short.length <= cells) return short;
+    let bare = full;
+    for (;;) {
+      const next = bare.replace(SUFFIX, '');
+      if (next === bare || !next.trim()) break;
+      bare = next;
+      if (bare.length <= cells) return bare;
+    }
     return t.tla.slice(0, cells);
   }
 
@@ -88,8 +98,8 @@
       case 'SUSPENDED': return { text: 'SUSPENDED', tone: 'FINAL' };
       case 'CANCELLED': return { text: 'CANCELLED', tone: 'FINAL' };
       default:
-        if (d > dayStart(now, 1)) { const k = new Date(m.kickoff); return { text: `${WD[k.getDay()]} ${k.getDate()} ${MO[k.getMonth()]}`, tone: 'INFO' }; }
-        if (d > today) return { text: 'TOMORROW', tone: 'INFO' };
+        // A later day's fixture: nothing to report yet (the day line above says when).
+        if (d > today) return { text: '', tone: 'INFO' };
         if (m.kickoff > now) {
           const mins = Math.ceil((m.kickoff - now) / MIN);
           if (mins > 60) return { text: 'ON TIME', tone: 'ON_TIME' };
@@ -105,31 +115,61 @@
     if (followed == null) return null;
     const mine = matches.filter((m) => m.home.id === followed || m.away.id === followed);
     const first = (list) => list.sort((a, b) => a.kickoff - b.kickoff)[0] || null;
-    return first(mine.filter((m) => isLive(m.status)))
+    // "Live" only counts within a match's length of kickoff: an old match left
+    // IN_PLAY by stale data isn't your club's current match.
+    return first(mine.filter((m) => isLive(m.status) && m.kickoff > now - 4 * 60 * MIN))
       || first(mine.filter((m) => isUpcoming(m.status) && (m.kickoff > now || dayStart(m.kickoff) === dayStart(now))));
   }
 
-  /** Today's matches, then upcoming, then recent results (newest first); the pinned match on top. */
+  const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  /** "TODAY", "TOMORROW", "YESTERDAY", else "SATURDAY 31 OCT". */
+  function dayWord(t, now) {
+    const d = dayStart(t);
+    if (d === dayStart(now)) return 'TODAY';
+    if (d === dayStart(now, 1)) return 'TOMORROW';
+    if (d === dayStart(now, -1)) return 'YESTERDAY';
+    const k = new Date(t);
+    return `${DAYS[k.getDay()]} ${k.getDate()} ${MO[k.getMonth()]}`;
+  }
+
+  /**
+   * Your club's match on top, then today's matches, upcoming fixtures and
+   * recent results (newest first). On a day without matches the results
+   * come before the fixtures: on a Monday, the weekend's scores lead. Each
+   * new day starts with a header line.
+   */
   function order(matches, followed, now) {
     const today = dayStart(now);
     const pin = pinned(matches, followed, now);
-    const time = (m, s) => {
-      if (s !== 'RECENT') return boardTime(m.kickoff);
+    const section = (m) => (dayStart(m.kickoff) === today ? 'TODAY' : dayStart(m.kickoff) > today ? 'UPCOMING' : 'RECENT');
+    const row = (m, header) => {
       const k = new Date(m.kickoff);
-      return `${WD[k.getDay()]} ${k.getDate()}`.padEnd(6);
+      const d = dayStart(m.kickoff);
+      return {
+        match: m, section: section(m), pinned: !!pin && m.id === pin.id, time: boardTime(m.kickoff), status: statusOf(m, now),
+        header, pinnedTeam: pin && m.id === pin.id ? followed : null,
+        // For shorter boards with no room for day lines: the day in the row.
+        shortDay: d > today ? (d === dayStart(now, 1) ? 'TOMORROW' : `${WD[k.getDay()]} ${k.getDate()} ${MO[k.getMonth()]}`) : '',
+        dayTime: `${WD[k.getDay()]} ${k.getDate()}`.padEnd(6),
+        home: m.home, away: m.away, homeScore: m.homeScore, awayScore: m.awayScore, winner: m.winner, done: isDone(m.status),
+        live: isLive(m.status), homeName: (n) => fitName(m.home, n), awayName: (n) => fitName(m.away, n),
+      };
     };
-    const row = (m, section) => ({
-      match: m, section, pinned: !!pin && m.id === pin.id, time: time(m, section), status: statusOf(m, now),
-      home: m.home, away: m.away, homeScore: m.homeScore, awayScore: m.awayScore, winner: m.winner, done: isDone(m.status),
-      homeName: (n) => fitName(m.home, n), awayName: (n) => fitName(m.away, n),
-    });
     const rest = matches.filter((m) => !pin || m.id !== pin.id);
     const byTime = (a, b) => a.kickoff - b.kickoff || a.id - b.id;
-    const todays = rest.filter((m) => dayStart(m.kickoff) === today).sort(byTime).map((m) => row(m, 'TODAY'));
-    const upcoming = rest.filter((m) => dayStart(m.kickoff) > today).sort(byTime).map((m) => row(m, 'UPCOMING'));
-    const recent = rest.filter((m) => dayStart(m.kickoff) < today).sort((a, b) => b.kickoff - a.kickoff || a.id - b.id).map((m) => row(m, 'RECENT'));
-    const top = pin ? [row(pin, dayStart(pin.kickoff) === today ? 'TODAY' : dayStart(pin.kickoff) > today ? 'UPCOMING' : 'RECENT')] : [];
-    return top.concat(todays, upcoming, recent);
+    const todays = rest.filter((m) => dayStart(m.kickoff) === today).sort(byTime);
+    const upcoming = rest.filter((m) => dayStart(m.kickoff) > today).sort(byTime);
+    const recent = rest.filter((m) => dayStart(m.kickoff) < today).sort((a, b) => b.kickoff - a.kickoff || a.id - b.id);
+    const anyToday = matches.some((m) => dayStart(m.kickoff) === today);
+    const body = anyToday ? todays.concat(upcoming, recent) : recent.concat(upcoming);
+    const out = pin ? [row(pin, `YOUR CLUB · ${dayWord(pin.kickoff, now)}`)] : [];
+    let last = null;
+    for (const m of body) {
+      const d = dayStart(m.kickoff);
+      out.push(row(m, d !== last ? dayWord(m.kickoff, now) : null));
+      last = d;
+    }
+    return out;
   }
 
   /**

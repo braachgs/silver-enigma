@@ -96,6 +96,20 @@ const server = http.createServer((req, res) => {
     await ctx.close();
   }
   {
+    // A day without matches (Tuesday): the weekend's results lead, under day lines.
+    const ctx = await b.newContext({ viewport: { width: SLOTS.VM[0], height: SLOTS.VM[1] }, timezoneId: 'Europe/London' });
+    const p = await ctx.newPage();
+    await p.addInitScript((s) => Object.assign(window, s), MB);
+    await p.route(/api\.football-data\.org/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: PL }));
+    await p.clock.install({ time: Date.parse('2026-10-27T09:00:00Z') });
+    await p.goto(`${base}/matchboard/index.html`);
+    await p.clock.runFor(2000); await p.waitForTimeout(500);
+    const ids = await p.evaluate(() => shownRows.slice(0, bands.length).map((r) => r.match.id));
+    ok(ids[0] === 1010 && ids[1] === 1008, `Tuesday: your club's next match, then yesterday's result first (${ids})`);
+    await p.screenshot({ path: `${OUT}/match-VM-tuesday.png` });
+    await ctx.close();
+  }
+  {
     // CORS refused: the helper relays it.
     const { ctx, p, calls } = await open('matchboard', SLOTS.VM, MB, { direct: false });
     const store = await p.evaluate(() => JSON.parse(localStorage.getItem('matchboard-standalone')));

@@ -107,12 +107,26 @@ object Clubs {
 
     fun name(t: Team): String = names[t.shortName] ?: t.shortName
 
-    /** The name in at most [cells] flaps: full, then a common short form, then the three-letter code. */
+    // Words a club name can lose and still be unmistakable: Coventry City -> Coventry.
+    private val suffix = Regex("\\s+(City|Town|United|Utd|Athletic|Albion|Rovers|Wanderers|County|FC|AFC)$", RegexOption.IGNORE_CASE)
+
+    /**
+     * The name in at most [cells] flaps: full, then a common short form,
+     * then without a generic last word (City, Town, United...), and only
+     * then the three-letter code.
+     */
     fun fit(t: Team, cells: Int): String {
         val full = name(t)
         if (full.length <= cells) return full
         val short = compact[full]
         if (short != null && short.length <= cells) return short
+        var bare = full
+        while (true) {
+            val next = bare.replace(suffix, "")
+            if (next == bare || next.isBlank()) break
+            bare = next
+            if (bare.length <= cells) return bare
+        }
         return t.tla.take(cells)
     }
 }

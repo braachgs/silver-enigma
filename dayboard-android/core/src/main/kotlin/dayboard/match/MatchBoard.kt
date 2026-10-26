@@ -1,7 +1,6 @@
 package dayboard.match
 
 import dayboard.core.BoardBuilder
-import dayboard.core.Flap
 import dayboard.core.MINUTE
 import dayboard.core.Remark
 import dayboard.core.Tone
@@ -16,12 +15,21 @@ enum class Section { TODAY, UPCOMING, RECENT }
 
 data class MatchRow(
     val match: Match,
-    /** Kickoff " 3:00P" (12-hour, local); a past day's result shows its day, "SAT 25". */
+    /** Kickoff " 3:00P" (12-hour, local). The day is in [header]. */
     val time: String,
+    /** Blank for a later day's fixture: the day header above says when. */
     val status: Remark,
     val section: Section,
     /** The followed club's next or current match, pinned to the top. */
     val pinned: Boolean,
+    /** A plain-text line above this row when a new day starts: "TODAY", "SATURDAY 31 OCT", "YOUR CLUB · TOMORROW". */
+    val header: String? = null,
+    /** On the pinned row, the followed club, whose name is drawn in amber. */
+    val pinnedTeam: Int? = null,
+    /** For short boards with no room for day lines: the status flap's day ("TOMORROW", "SAT 31 OCT") ... */
+    val shortDay: String = "",
+    /** ... and a past result's day in the time flaps ("SAT 24"). */
+    val dayTime: String = "",
 )
 
 /** What the app knows: the last matches it fetched successfully, and how the latest attempt went. */
@@ -50,8 +58,9 @@ data class MatchBoardModel(
 
 class MatchBoardBuilder(private val zone: ZoneId, locale: Locale = Locale.getDefault()) {
     private val board = BoardBuilder(zone, hour12 = true, locale = locale)
-    private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK)
     private val weekday = DateTimeFormatter.ofPattern("EEE", Locale.UK)
+    private val longDay = DateTimeFormatter.ofPattern("EEEE d MMM", Locale.UK)
+    private val month = DateTimeFormatter.ofPattern("MMM", Locale.UK)
     private val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.UK)
 
     private fun day(t: Long): LocalDate = Instant.ofEpochMilli(t).atZone(zone).toLocalDate()
@@ -72,8 +81,8 @@ class MatchBoardBuilder(private val zone: ZoneId, locale: Locale = Locale.getDef
             MatchStatus.SUSPENDED -> Remark("SUSPENDED", Tone.FINAL)
             MatchStatus.CANCELLED -> Remark("CANCELLED", Tone.FINAL)
             else -> when {
-                d.isAfter(today.plusDays(1)) -> Remark(Flap.clean(dayFormat.format(Instant.ofEpochMilli(m.kickoff).atZone(zone))).trim(), Tone.INFO)
-                d.isAfter(today) -> Remark("TOMORROW", Tone.INFO)
+                // A later day's fixture: nothing to report yet (the day header says when).
+                d.isAfter(today) -> Remark("", Tone.INFO)
                 m.kickoff > now -> {
                     val mins = ceil((m.kickoff - now) / MINUTE.toDouble()).toInt()
                     if (mins > 60) Remark("ON TIME", Tone.ON_TIME)
@@ -91,31 +100,55 @@ class MatchBoardBuilder(private val zone: ZoneId, locale: Locale = Locale.getDef
     fun pinned(matches: List<Match>, followed: Int?, now: Long): Match? {
         if (followed == null) return null
         val mine = matches.filter { it.involves(followed) }
-        return mine.filter { it.status.live }.minByOrNull { it.kickoff }
+        // "Live" only counts within a match's length of kickoff: an old match left
+        // IN_PLAY by stale data isn't your club's current match.
+        return mine.filter { it.status.live && it.kickoff > now - 4 * 60 * MINUTE }.minByOrNull { it.kickoff }
             ?: mine.filter { it.status.upcoming && (it.kickoff > now || day(it.kickoff) == day(now)) }.minByOrNull { it.kickoff }
     }
 
-    /** Today's matches, then upcoming, then recent results (newest first); the pinned match on top. */
+    /**
+     * Your club's match on top, then today's matches, upcoming fixtures and
+     * recent results (newest first). On a day without matches the results
+     * come before the fixtures: on a Monday, the weekend's scores lead. Each
+     * new day starts with a header line.
+     */
     fun order(matches: List<Match>, followed: Int?, now: Long): List<MatchRow> {
         val today = day(now)
         val pin = pinned(matches, followed, now)
-        fun row(m: Match, s: Section) = MatchRow(m, time(m, s), status(m, now), s, m.id == pin?.id)
+        fun section(m: Match) = day(m.kickoff).let { if (it == today) Section.TODAY else if (it.isAfter(today)) Section.UPCOMING else Section.RECENT }
+        fun row(m: Match): MatchRow {
+            val z = Instant.ofEpochMilli(m.kickoff).atZone(zone)
+            val d = z.toLocalDate()
+            val short = if (d == today.plusDays(1)) "TOMORROW" else (weekday.format(z) + " " + z.dayOfMonth + " " + month.format(z)).uppercase()
+            return MatchRow(m, board.boardTime(m.kickoff), status(m, now), section(m), m.id == pin?.id,
+                pinnedTeam = if (m.id == pin?.id) followed else null,
+                shortDay = if (d.isAfter(today)) short else "",
+                dayTime = (weekday.format(z).uppercase() + " " + z.dayOfMonth).padEnd(6))
+        }
         val rest = matches.filter { it.id != pin?.id }
-        val todays = rest.filter { day(it.kickoff) == today }.sortedWith(compareBy({ it.kickoff }, { it.id })).map { row(it, Section.TODAY) }
-        val upcoming = rest.filter { day(it.kickoff).isAfter(today) }.sortedWith(compareBy({ it.kickoff }, { it.id })).map { row(it, Section.UPCOMING) }
-        val recent = rest.filter { day(it.kickoff).isBefore(today) }.sortedWith(compareBy({ -it.kickoff }, { it.id })).map { row(it, Section.RECENT) }
-        val top = pin?.let {
-            val d = day(it.kickoff)
-            listOf(row(it, if (d == today) Section.TODAY else if (d.isAfter(today)) Section.UPCOMING else Section.RECENT))
-        } ?: emptyList()
-        return top + todays + upcoming + recent
+        val todays = rest.filter { day(it.kickoff) == today }.sortedWith(compareBy({ it.kickoff }, { it.id }))
+        val upcoming = rest.filter { day(it.kickoff).isAfter(today) }.sortedWith(compareBy({ it.kickoff }, { it.id }))
+        val recent = rest.filter { day(it.kickoff).isBefore(today) }.sortedWith(compareBy({ -it.kickoff }, { it.id }))
+        val anyToday = matches.any { day(it.kickoff) == today }
+        val body = if (anyToday) todays + upcoming + recent else recent + upcoming
+        val out = ArrayList<MatchRow>()
+        pin?.let { out += row(it).copy(header = "YOUR CLUB · " + dayWord(day(it.kickoff), today)) }
+        var last: LocalDate? = null
+        for (m in body) {
+            val d = day(m.kickoff)
+            out += row(m).copy(header = if (d != last) dayWord(d, today) else null)
+            last = d
+        }
+        return out
     }
 
-    private fun time(m: Match, s: Section): String =
-        if (s == Section.RECENT) {
-            val z = Instant.ofEpochMilli(m.kickoff).atZone(zone)
-            (weekday.format(z).uppercase() + " " + z.dayOfMonth).padEnd(6)
-        } else board.boardTime(m.kickoff)
+    /** "TODAY", "TOMORROW", "YESTERDAY", else "SATURDAY 31 OCT". */
+    private fun dayWord(d: LocalDate, today: LocalDate): String = when (d) {
+        today -> "TODAY"
+        today.plusDays(1) -> "TOMORROW"
+        today.minusDays(1) -> "YESTERDAY"
+        else -> longDay.format(d).uppercase()
+    }
 
     fun build(state: FeedState, followed: Int?, now: Long, maxRows: Int): MatchBoardModel {
         val rows = if (state.message != null) emptyList() else order(state.matches, followed, now)

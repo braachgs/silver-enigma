@@ -19,6 +19,8 @@ import kotlin.math.min
  */
 class MatchLayout(val w: Float, val h: Float, val d: Float) {
     private val compact = h < 190 * d
+    /** Tall boards (Edge slots, big widgets) start each day with a line; shorter ones keep the day in the row. */
+    val dayLines = h >= 260 * d
     val pad = (if (compact) 8 else 10) * d
     val headerH = (if (compact) 20 else 24) * d
     val ruleY = pad + headerH
@@ -71,6 +73,9 @@ class MatchLayout(val w: Float, val h: Float, val d: Float) {
         return floor((avail / 2 + gap) / (c + gap)).toInt()
     }
 
+    /** A day's header line ("SATURDAY 31 OCT") above its first match. */
+    val dayH get() = 15 * d
+
     val fontSize get() = ch * 0.82f
     val rowH get() = if (oneLine) ch else ch * 2 + lineGap
 
@@ -94,9 +99,10 @@ data class Band(val top: Int, val bottom: Int)
 class MatchRenderer(private val cornerRadius: Float = 16f) {
 
     /**
-     * Draws [model]; returns each row's band (from half a gap above it to
-     * half a gap below), in order. [clock] draws the time in the header; the
-     * widget leaves it null and lays a TextClock over that corner.
+     * Draws [model] and returns the band of each row drawn (from half a gap
+     * above it, its day header included, to half a gap below), in order:
+     * as many rows as fit. [clock] draws the time in the header; the widget
+     * leaves it null and lays a TextClock over that corner.
      */
     fun draw(p: Painter, model: MatchBoardModel, l: MatchLayout, clock: String? = null): List<Band> {
         val d = l.d
@@ -104,7 +110,7 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
 
         val hs = 12 * d
         val hb = l.pad + l.headerH / 2 + p.capHeight(hs) / 2
-        p.text("MATCHES", l.pad + 2 * d, hb, hs, Palette.DIM, tracking = 0.14f)
+        p.text("MATCHES", l.pad + 2 * d, hb, hs, LABEL, tracking = 0.14f)
         p.text(model.dayLabel, l.pad + 2 * d + p.measure("MATCHES", hs, 0.14f) + 10 * d, hb, hs, Palette.INK, tracking = 0.1f)
         if (clock != null) p.text(clock, l.w - l.pad - 2 * d, hb + d, 15 * d, Palette.RULE, Align.RIGHT, 0.04f)
         p.rect(0f, l.ruleY, l.w, l.ruleH, Palette.RULE)
@@ -113,14 +119,26 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         if (model.rows.isEmpty()) {
             drawMessage(p, model.message ?: "NO MATCHES", l)
         } else {
-            model.rows.forEachIndexed { i, row ->
-                val y = l.rowsTop + i * (l.rowH + l.rowGap)
-                if (i > 0) p.rect(l.pad, y - l.rowGap / 2 - d / 2, l.contentW, max(1f, d * 0.75f), Palette.DIVIDER)
+            var y = l.rowsTop
+            for ((i, row) in model.rows.withIndex()) {
+                val top = y
+                // Shorter boards keep the day inside the row instead (see drawRow).
+                val header = if (l.dayLines) row.header else null
+                val headH = if (header != null) l.dayH else 0f
+                if (y + headH + l.rowH > l.rowsBottom + 0.5f && i > 0) break
+                if (i > 0) p.rect(l.pad, top - l.rowGap / 2 - d / 2, l.contentW, max(1f, d * 0.75f), Palette.DIVIDER)
+                if (header != null) {
+                    val size = 10.5f * d
+                    p.text(header, l.pad + 1 * d, y + l.dayH / 2 + p.capHeight(size) / 2 - 1.5f * d, size,
+                        if (row.pinned) Palette.RULE else LABEL, tracking = 0.12f)
+                    y += l.dayH
+                }
                 drawRow(p, row, y, l)
-                bands += Band((y - l.rowGap / 2).toInt(), (y + l.rowH + l.rowGap / 2).toInt())
+                bands += Band((top - l.rowGap / 2).toInt(), (y + l.rowH + l.rowGap / 2).toInt())
+                y += l.rowH + l.rowGap
             }
         }
-        drawFooter(p, model, l)
+        drawFooter(p, model, l, model.more + (model.rows.size - bands.size).coerceAtLeast(0))
         return bands
     }
 
@@ -128,14 +146,16 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         val d = l.d
         val m = row.match
         if (row.pinned) {
-            // Your club: a lifted row with an amber bar in the margin.
+            // Your club: a lifted row with an amber bar in the margin, and its name in amber.
             p.rect(l.pad - 4 * d, y - 3 * d, l.contentW + 8 * d, l.rowH + 6 * d, PIN_BG, 3 * d)
             p.rect(l.pad - 7 * d, y - 3 * d, 3 * d, l.rowH + 6 * d, Palette.RULE, 1.5f * d)
         }
         val upcomingInk = if (row.section == Section.UPCOMING) Palette.ink(Tone.INFO) else Palette.INK
-        cells(p, row.time, l.pad, y, l.timeCells, l, if (row.section == Section.RECENT) Palette.DIM else upcomingInk)
+        val time = if (!l.dayLines && row.section == Section.RECENT) row.dayTime else row.time
+        cells(p, time, l.pad, y, l.timeCells, l, if (row.section == Section.RECENT) LABEL else upcomingInk)
         val live = row.status.tone == Tone.LIVE
-        cells(p, row.status.text.padEnd(l.statusCells), l.statusX, y, l.statusCells, l, Palette.ink(row.status.tone), live)
+        val status = if (!l.dayLines && row.status.text.isEmpty()) row.shortDay else row.status.text
+        cells(p, status.padEnd(l.statusCells), l.statusX, y, l.statusCells, l, Palette.ink(row.status.tone), live)
 
         val sy = if (l.oneLine) y else y + l.ch + l.lineGap
         // At full time the winner is bold and the loser dimmed.
@@ -145,10 +165,22 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         val n = l.nameCells
         val home = Flap.clean(Clubs.fit(m.home, n)).padStart(n)
         val away = Flap.clean(Clubs.fit(m.away, n)).padEnd(n)
-        cells(p, home, l.homeX, sy, n, l, if (awayWon) Palette.DIM else Palette.INK, bold = homeWon)
-        score(p, m.homeScore, l.scoreX, sy, l, dim = awayWon)
-        score(p, m.awayScore, l.awayScoreX, sy, l, dim = homeWon)
-        cells(p, away, l.awayX, sy, n, l, if (homeWon) Palette.DIM else Palette.INK, bold = awayWon)
+        fun nameInk(t: Team, lost: Boolean) = when {
+            lost -> Palette.DIM
+            row.pinnedTeam == t.id -> Palette.RULE
+            else -> Palette.INK
+        }
+        cells(p, home, l.homeX, sy, n, l, nameInk(m.home, awayWon), bold = homeWon)
+        if (m.homeScore == null && m.awayScore == null && !m.status.live) {
+            // No score yet: a small "v" between the names instead of two empty flaps.
+            val size = l.fontSize * 0.8f
+            val mid = (l.scoreX + l.awayScoreX + l.scoreW) / 2
+            p.text("v", mid, sy + l.ch / 2 + p.capHeight(size) / 2, size, LABEL, Align.CENTER)
+        } else {
+            score(p, m.homeScore, l.scoreX, sy, l, dim = awayWon)
+            score(p, m.awayScore, l.awayScoreX, sy, l, dim = homeWon)
+        }
+        cells(p, away, l.awayX, sy, n, l, nameInk(m.away, homeWon), bold = awayWon)
     }
 
     /** A club's score on its own amber flap; an empty dark flap when the feed has no score. */
@@ -175,10 +207,12 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         val baseline = y + l.ch / 2 + p.capHeight(l.fontSize) / 2
         for (i in 0 until n) {
             val cx = x + i * (l.cw + l.gap)
-            p.rect(cx, y, l.cw, l.ch, top, r)
-            p.rect(cx, y + l.ch / 2, l.cw, l.ch / 2, bottom, r)
-            p.rect(cx, y + l.ch / 2, l.cw, r, bottom)
             val c = text.getOrNull(i)
+            // Blank flaps recede, so the eye goes to the names.
+            val blank = (c == null || c == ' ') && !live
+            p.rect(cx, y, l.cw, l.ch, if (blank) EMPTY_TOP else top, r)
+            p.rect(cx, y + l.ch / 2, l.cw, l.ch / 2, if (blank) EMPTY_BOTTOM else bottom, r)
+            p.rect(cx, y + l.ch / 2, l.cw, r, if (blank) EMPTY_BOTTOM else bottom)
             if (c != null && c != ' ') {
                 p.text(c.toString(), cx + l.cw / 2, baseline, l.fontSize, ink, Align.CENTER)
                 // The flap font has one weight: a second pass a hair to the right makes it bold.
@@ -199,21 +233,25 @@ class MatchRenderer(private val cornerRadius: Float = 16f) {
         }
     }
 
-    private fun drawFooter(p: Painter, model: MatchBoardModel, l: MatchLayout) {
+    private fun drawFooter(p: Painter, model: MatchBoardModel, l: MatchLayout, moreCount: Int) {
         val d = l.d
-        val size = 10.5f * d
+        val size = 12 * d
         val baseline = l.h - l.pad - (l.footerH - p.capHeight(size)) / 2
-        val more = if (model.more > 0) "+${model.more} MORE" else ""
+        val more = if (moreCount > 0) "+$moreCount MORE" else ""
         val moreW = if (more.isEmpty()) 0f else p.measure(more, size, 0.08f)
-        if (more.isNotEmpty()) p.text(more, l.w - l.pad, baseline, size, Palette.DIM, Align.RIGHT, 0.08f)
+        if (more.isNotEmpty()) p.text(more, l.w - l.pad, baseline, size, LABEL, Align.RIGHT, 0.08f)
         val maxW = l.contentW - moreW - if (more.isEmpty()) 0f else 12 * d
         val stale = model.footer.contains("·")
         p.text(BoardRenderer.ellipsize(p, model.footer, size, maxW, 0.08f), l.pad, baseline, size,
-            if (stale) Palette.ink(Tone.BOARDING) else Palette.DIM, tracking = 0.08f)
+            if (stale) Palette.ink(Tone.BOARDING) else LABEL, tracking = 0.08f)
     }
 
     companion object {
-        const val PIN_BG = 0xFF222016.toInt()
+        const val PIN_BG = 0xFF302914.toInt()
+        /** Labels on the dark board, brighter than Palette.DIM: the header, day lines and footer. */
+        const val LABEL = 0xFFC9C4B5.toInt()
+        const val EMPTY_TOP = 0xFF1F1F1F.toInt()
+        const val EMPTY_BOTTOM = 0xFF1A1A1A.toInt()
         const val AMBER_DIM = 0xFF6E5A1C.toInt()
         const val SCORE_INK = 0xFF111111.toInt()
     }

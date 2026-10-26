@@ -16,11 +16,16 @@ eq([bre.status, bre.homeScore, bre.awayScore], ['IN_PLAY', 1, 1], 'live score as
 eq(matches.find((m) => m.id === 1007).homeScore, null, 'no score before the feed gives one');
 const rows = M.order(matches, BRE, now);
 eq(rows.map((r) => r.match.id), [1005, 1006, 1007, 1008, 1009, 1010, 1004, 1002, 1003, 1001], 'today, upcoming, recent; your club on top');
-eq(rows.map((r) => r.status.text), ['LIVE', 'IN 20 MIN', 'ON TIME', 'TOMORROW', 'SAT 31 OCT', 'SUN 1 NOV', 'FULL TIME', 'FULL TIME', 'POSTPONED', 'FULL TIME'], 'statuses');
-eq(rows.map((r) => r.time), [' 2:00P', ' 3:00P', ' 4:30P', ' 8:00P', ' 3:00P', ' 2:00P', 'SAT 24', 'SAT 24', 'SAT 24', 'SAT 24'], 'times');
+eq(rows.map((r) => r.status.text), ['LIVE', 'IN 20 MIN', 'ON TIME', '', '', '', 'FULL TIME', 'FULL TIME', 'POSTPONED', 'FULL TIME'], 'statuses: later days blank (the day line says when)');
+eq(rows.map((r) => r.time), [' 2:00P', ' 3:00P', ' 4:30P', ' 8:00P', ' 3:00P', ' 2:00P', ' 5:30P', ' 3:00P', ' 3:00P', '12:30P'], 'kickoff times');
+eq(rows.map((r) => r.header), ['YOUR CLUB · TODAY', 'TODAY', null, 'TOMORROW', 'SATURDAY 31 OCT', 'SUNDAY 1 NOV', 'YESTERDAY', null, null, null], 'day lines');
+eq([rows[0].pinnedTeam, rows.slice(0, 6).map((r) => r.shortDay), rows[6].dayTime], [BRE, ['', '', '', 'TOMORROW', 'SAT 31 OCT', 'SUN 1 NOV'], 'SAT 24'], 'your club, and the in-row day for short boards');
+const tue = M.order(matches, BRE, T('2026-10-27T09:00:00Z'));
+eq(tue.map((r) => r.match.id), [1010, 1008, 1007, 1006, 1005, 1004, 1002, 1003, 1001, 1009], 'no matches today: results first, then fixtures; a stale IN_PLAY from Sunday is not pinned');
+eq(tue.map((r) => r.header), ['YOUR CLUB · SUNDAY 1 NOV', 'YESTERDAY', 'SUNDAY 25 OCT', null, null, 'SATURDAY 24 OCT', null, null, null, 'SATURDAY 31 OCT'], 'Tuesday day lines');
 const done = matches.map((m) => (m.id === 1005 ? { ...m, status: 'FINISHED', winner: 'DRAW' } : m));
 const r2 = M.order(done, BRE, now);
-eq([r2[0].match.id, r2[0].pinned, r2[0].status.text, r2[1].match.id], [1010, true, 'SUN 1 NOV', 1005], 'pins the next match when none is live');
+eq([r2[0].match.id, r2[0].pinned, r2[0].status.text, r2[0].header, r2[1].match.id], [1010, true, '', 'YOUR CLUB · SUNDAY 1 NOV', 1005], 'pins the next match when none is live');
 const liv = matches.find((m) => m.id === 1006);
 eq(M.statusOf(liv, T('2026-10-25T15:02:00Z')).text, 'KICK OFF', 'past kickoff without word from the feed: KICK OFF, not LIVE');
 eq(M.statusOf(liv, T('2026-10-25T14:57:30Z')).text, 'IN 5 MIN', 'countdown');
@@ -34,4 +39,8 @@ eq([M.findClub(matches, 'brentford').id, M.findClub(matches, 'Spurs').id, M.find
 eq(M.link(matches.find((m) => m.id === 1004)), 'https://www.youtube.com/results?search_query=Fulham+vs+Bournemouth+highlights+Premier+League+NBC+Sports', 'finished: highlights search');
 eq(M.link(bre), 'https://www.peacocktv.com/sports/premier-league', 'live: Peacock');
 eq([M.fitName(bre.away, 10), M.fitName(bre.away, 8), M.fitName(matches.find((m) => m.id === 1003).away, 11)], ['Man United', 'Man Utd', 'Palace'], 'names fit their flaps');
+const cov = { id: 1076, name: 'Coventry City FC', shortName: 'Coventry City', tla: 'COV' };
+const hull = { id: 322, name: 'Hull City AFC', shortName: 'Hull City', tla: 'HUL' };
+const whu = matches.find((m) => m.id === 1008).home;
+eq([M.fitName(cov, 11), M.fitName(hull, 11), M.fitName(hull, 8), M.fitName(whu, 8), M.fitName(whu, 7)], ['Coventry', 'Hull City', 'Hull', 'West Ham', 'WHU'], 'unknown clubs lose City/Town/United before falling back to a code');
 if (fails) { console.log(`${fails} FAILED`); process.exitCode = 1; } else console.log('ALL OK');

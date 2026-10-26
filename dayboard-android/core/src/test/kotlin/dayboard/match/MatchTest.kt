@@ -48,9 +48,16 @@ class MatchTest {
         val rows = builder.order(matches, brentford, now)
         assertEquals(listOf(1005L, 1006, 1007, 1008, 1009, 1010, 1004, 1002, 1003, 1001), rows.map { it.match.id })
         assertTrue(rows[0].pinned && rows.drop(1).none { it.pinned })
-        assertEquals(listOf("LIVE", "IN 20 MIN", "ON TIME", "TOMORROW", "SAT 31 OCT", "SUN 1 NOV", "FULL TIME", "FULL TIME", "POSTPONED", "FULL TIME"),
+        // Later days' fixtures have nothing to report: the day line above them says when.
+        assertEquals(listOf("LIVE", "IN 20 MIN", "ON TIME", "", "", "", "FULL TIME", "FULL TIME", "POSTPONED", "FULL TIME"),
             rows.map { it.status.text })
-        assertEquals(listOf(" 2:00P", " 3:00P", " 4:30P", " 8:00P", " 3:00P", " 2:00P", "SAT 24", "SAT 24", "SAT 24", "SAT 24"), rows.map { it.time })
+        assertEquals(listOf(" 2:00P", " 3:00P", " 4:30P", " 8:00P", " 3:00P", " 2:00P", " 5:30P", " 3:00P", " 3:00P", "12:30P"), rows.map { it.time })
+        assertEquals(listOf("YOUR CLUB · TODAY", "TODAY", null, "TOMORROW", "SATURDAY 31 OCT", "SUNDAY 1 NOV", "YESTERDAY", null, null, null),
+            rows.map { it.header })
+        assertEquals(brentford, rows[0].pinnedTeam)
+        // Short boards (a 4x2 widget) keep the day in the row instead.
+        assertEquals(listOf("", "", "", "TOMORROW", "SAT 31 OCT", "SUN 1 NOV"), rows.take(6).map { it.shortDay })
+        assertEquals("SAT 24", rows[6].dayTime)
     }
 
     @Test fun pinsTheNextMatchWhenNoneIsLive() {
@@ -58,9 +65,19 @@ class MatchTest {
         val rows = builder.order(done, brentford, now)
         assertEquals(1010L, rows[0].match.id)
         assertTrue(rows[0].pinned)
-        assertEquals("SUN 1 NOV", rows[0].status.text)
+        assertEquals("", rows[0].status.text)
+        assertEquals("YOUR CLUB · SUNDAY 1 NOV", rows[0].header)
         assertEquals(1005L, rows[1].match.id) // today's result stays in today's list
         assertNull(builder.pinned(done, null, now))
+    }
+
+    @Test fun onADayWithoutMatchesResultsComeFirst() {
+        // Tuesday 27 Oct: no matches today, so the weekend's results lead, then the fixtures.
+        val tue = t("2026-10-27T09:00:00Z")
+        val rows = builder.order(matches, brentford, tue)
+        assertEquals(listOf(1010L, 1008, 1007, 1006, 1005, 1004, 1002, 1003, 1001, 1009), rows.map { it.match.id })
+        assertEquals(listOf("YOUR CLUB · SUNDAY 1 NOV", "YESTERDAY", "SUNDAY 25 OCT", null, null, "SATURDAY 24 OCT", null, null, null, "SATURDAY 31 OCT"),
+            rows.map { it.header })
     }
 
     @Test fun statusesNeverClaimMoreThanTheFeedSays() {
@@ -107,6 +124,14 @@ class MatchTest {
         assertEquals("Palace", Clubs.fit(teams["CRY"]!!, 11))
         assertEquals("Forest", Clubs.fit(teams["NOT"]!!, 9))
         assertEquals("AVL", Clubs.fit(teams["AVL"]!!, 3))
+        // Clubs no list knows lose a generic last word before falling back to their code.
+        val cov = Team(1076, "Coventry City FC", "Coventry City", "COV")
+        assertEquals("Coventry", Clubs.fit(cov, 11))
+        val hull = Team(322, "Hull City AFC", "Hull City", "HUL")
+        assertEquals("Hull City", Clubs.fit(hull, 11))
+        assertEquals("Hull", Clubs.fit(hull, 8))
+        assertEquals("West Ham", Clubs.fit(teams["WHU"]!!, 8))
+        assertEquals("WHU", Clubs.fit(teams["WHU"]!!, 7)) // never just the first word
     }
 
     /** Records how far drawing reaches, to catch anything spilling off the board. */
@@ -137,7 +162,8 @@ class MatchTest {
         }
         ImageIO.write(img, "png", File(out, "match-$name.png"))
         assertTrue(spill <= 0.5f, "$name: drawing spills ${spill}px past the right edge")
-        assertEquals(model.rows.size, bands.size)
+        // As many rows as fit (day lines take room); the rest count in "+N MORE".
+        assertTrue(bands.size <= model.rows.size && (model.rows.isEmpty() || bands.isNotEmpty()), "$name: ${bands.size} of ${model.rows.size} rows drawn")
         bands.zipWithNext().forEach { (a, b) -> assertEquals(a.bottom, b.top, "$name: rows tile without gaps") }
         bands.lastOrNull()?.let { assertTrue(it.bottom <= l.h, "$name: rows end on the board") }
         return bands
@@ -155,5 +181,9 @@ class MatchTest {
         preview("4x3-full-time", 300, 230, FeedState(done, t("2026-10-25T16:01:00Z")), t("2026-10-25T16:05:00Z"))
         preview("4x2-stale", 300, 150, FeedState(matches, t("2026-10-25T14:39:00Z"), error = "UPDATE FAILED"), t("2026-10-25T15:20:00Z"))
         preview("4x2-no-key", 300, 150, FeedState(emptyList(), null, message = "ADD YOUR API KEY IN MATCH BOARD"))
+        preview("4x3-tuesday", 300, 230, at = t("2026-10-27T09:00:00Z"))
+        assertTrue(preview("4x2-tuesday", 300, 150, at = t("2026-10-27T09:00:00Z")).size == 2, "a 4x2 widget still shows two matches")
+        preview("edge-vm", 360, 435)
+        preview("edge-vm-tuesday", 360, 435, at = t("2026-10-27T09:00:00Z"))
     }
 }

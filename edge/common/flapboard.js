@@ -155,16 +155,19 @@
 
   function cells(p, text, x, y, n, l, ink, { live = false, bold = false } = {}) {
     const d = l.d;
-    const top = live ? Palette.LIVE_TOP : Palette.CELL_TOP;
-    const bottom = live ? Palette.LIVE_BOTTOM : Palette.CELL_BOTTOM;
+    const t = l.theme;
     const r = 1.5 * d;
     const baseline = y + l.ch / 2 + p.capHeight(l.fontSize) / 2;
     for (let i = 0; i < n; i++) {
       const cx = x + i * (l.cw + l.gap);
+      const c = text[i];
+      // Match Board dims blank flaps so the eye goes to the names.
+      const blank = l.dimBlank && !live && (c == null || c === ' ');
+      const top = live ? Palette.LIVE_TOP : blank ? t.emptyTop : t.cellTop;
+      const bottom = live ? Palette.LIVE_BOTTOM : blank ? t.emptyBottom : t.cellBottom;
       p.rect(cx, y, l.cw, l.ch, top, r);
       p.rect(cx, y + l.ch / 2, l.cw, l.ch / 2, bottom, r);
       p.rect(cx, y + l.ch / 2, l.cw, r, bottom);
-      const c = text[i];
       if (c != null && c !== ' ') {
         p.text(c, cx + l.cw / 2, baseline, l.fontSize, ink, 'center');
         if (bold) p.text(c, cx + l.cw / 2 + 0.55 * d, baseline, l.fontSize, ink, 'center');
@@ -181,10 +184,24 @@
     return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
   }
 
-  /** A board's background, with its dividers and pinned-row shade worked out from it. */
+  /**
+   * A board's background with the colours worked out from it: dividers, the
+   * pinned row's shade, and flaps. On the standard charcoal the flaps are the
+   * phone's grey; on a coloured board they're a darker shade of that colour,
+   * so their edges stay crisp instead of muddy grey-on-green.
+   */
   function theme(bg) {
-    const base = /^#[0-9a-f]{6}/i.test(bg || '') ? bg.slice(0, 7) : Palette.BACKGROUND;
-    return { bg: base, divider: mix(base, '#FFFFFF', 0.07), pin: mix(base, Palette.RULE, 0.07) };
+    const base = /^#[0-9a-f]{6}/i.test(bg || '') ? bg.slice(0, 7).toUpperCase() : Palette.BACKGROUND;
+    const charcoal = base === Palette.BACKGROUND;
+    return {
+      bg: base,
+      divider: mix(base, '#FFFFFF', 0.07),
+      pin: mix(base, Palette.RULE, 0.12),
+      cellTop: charcoal ? Palette.CELL_TOP : mix(base, '#000000', 0.45),
+      cellBottom: charcoal ? Palette.CELL_BOTTOM : mix(base, '#000000', 0.6),
+      emptyTop: charcoal ? '#1F1F1F' : mix(base, '#000000', 0.2),
+      emptyBottom: charcoal ? '#1A1A1A' : mix(base, '#000000', 0.28),
+    };
   }
 
   function header(p, l, title, label, clock) {
@@ -192,7 +209,7 @@
     p.rect(0, 0, l.w, l.h, l.theme.bg, l.radius * d);
     const hs = 12 * d;
     const hb = l.pad + l.headerH / 2 + p.capHeight(hs) / 2;
-    p.text(title, l.pad + 2 * d, hb, hs, Palette.DIM, 'left', 0.14);
+    p.text(title, l.pad + 2 * d, hb, hs, l.labelInk || Palette.DIM, 'left', 0.14);
     p.text(label, l.pad + 2 * d + p.measure(title, hs, 0.14) + 10 * d, hb, hs, Palette.INK, 'left', 0.1);
     if (clock) p.text(clock, l.w - l.pad - 2 * d, hb + d, 15 * d, Palette.RULE, 'right', 0.04);
     p.rect(0, l.ruleY, l.w, l.ruleH, Palette.RULE);
@@ -211,13 +228,13 @@
 
   function footer(p, l, left, right, leftInk) {
     const d = l.d;
-    const size = 10.5 * d;
+    const size = (l.footerSize || 10.5) * d;
     const baseline = l.h - l.pad - (l.footerH - p.capHeight(size)) / 2;
     const rightW = right ? p.measure(right, size, 0.08) : 0;
-    if (right) p.text(right, l.w - l.pad, baseline, size, Palette.DIM, 'right', 0.08);
+    if (right) p.text(right, l.w - l.pad, baseline, size, l.labelInk || Palette.DIM, 'right', 0.08);
     if (left) {
       const maxW = l.contentW - rightW - (right ? 12 * d : 0);
-      p.text(ellipsize(p, left, size, maxW, 0.08), l.pad, baseline, size, leftInk || Palette.DIM, 'left', 0.08);
+      p.text(ellipsize(p, left, size, maxW, 0.08), l.pad, baseline, size, leftInk || l.labelInk || Palette.DIM, 'left', 0.08);
     }
   }
 
@@ -321,6 +338,12 @@
     l.fontSize = l.ch * 0.82;
     l.rowH = l.oneLine ? l.ch : l.ch * 2 + l.lineGap;
     l.capacity = Math.max(1, Math.floor((l.rowsBottom - l.rowsTop + l.rowGap) / (l.rowH + l.rowGap)));
+    // Tall boards start each day with a line; shorter ones keep the day in the row.
+    l.dayLines = h >= 260 * d;
+    l.dayH = 15 * d;
+    l.dimBlank = true;
+    l.labelInk = LABEL;
+    l.footerSize = 12;
     l.statusX = l.w - l.pad - l.statusCells * (c + l.gap) + l.gap;
     l.homeX = l.oneLine ? l.pad + l.timeCells * (c + l.gap) + l.sectionGap : l.pad;
     l.scoreX = l.homeX + l.nameCells * (c + l.gap) - l.gap + l.sectionGap;
@@ -333,8 +356,8 @@
     const d = l.d;
     const r = 2 * d;
     if (value == null) {
-      p.rect(x, y, l.scoreW, l.ch, Palette.CELL_TOP, r);
-      p.rect(x, y + l.ch / 2, l.scoreW, l.ch / 2, Palette.CELL_BOTTOM, r);
+      p.rect(x, y, l.scoreW, l.ch, l.theme.cellTop, r);
+      p.rect(x, y + l.ch / 2, l.scoreW, l.ch / 2, l.theme.cellBottom, r);
     } else {
       p.rect(x, y, l.scoreW, l.ch, dim ? Palette.AMBER_DIM : Palette.RULE, r);
       const s = String(value);
@@ -343,6 +366,9 @@
     }
     p.rect(x, y + l.ch / 2 - d * 0.3, l.scoreW, Math.max(1, d * 0.6), Palette.TILE_SPLIT);
   }
+
+  /** Labels on the dark board, brighter than Palette.DIM: Match Board's header, day lines and footer. */
+  const LABEL = '#C9C4B5';
 
   /** Match Board's own colour, so it stands apart from Day Board: a dark pitch green. */
   const MATCH_BG = '#0E2A1B';
@@ -358,27 +384,49 @@
     header(p, l, 'MATCHES', model.dayLabel, clock);
     const bands = [];
     if (!model.rows.length) message(p, model.message || 'NO MATCHES', l);
-    model.rows.forEach((row, i) => {
-      const y = l.rowsTop + i * (l.rowH + l.rowGap);
-      if (i > 0) divider(p, l, y);
+    let y = l.rowsTop;
+    for (let i = 0; i < model.rows.length; i++) {
+      const row = model.rows[i];
+      const top = y;
+      const head = l.dayLines ? row.header : null;
+      // As many rows as fit, day lines included; the rest count in "+N MORE".
+      if (i > 0 && y + (head ? l.dayH : 0) + l.rowH > l.rowsBottom + 0.5) break;
+      if (i > 0) divider(p, l, top);
+      if (head) {
+        const size = 10.5 * d;
+        p.text(head, l.pad + d, y + l.dayH / 2 + p.capHeight(size) / 2 - 1.5 * d, size, row.pinned ? Palette.RULE : LABEL, 'left', 0.12);
+        y += l.dayH;
+      }
       if (row.pinned) {
+        // Your club: a lifted row, an amber bar in the margin, and its name in amber.
         p.rect(l.pad - 4 * d, y - 3 * d, l.contentW + 8 * d, l.rowH + 6 * d, l.theme.pin, 3 * d);
         p.rect(l.pad - 7 * d, y - 3 * d, 3 * d, l.rowH + 6 * d, Palette.RULE, 1.5 * d);
       }
       const upcomingInk = row.section === 'UPCOMING' ? Palette.ink('INFO') : Palette.INK;
-      cells(p, row.time, l.pad, y, l.timeCells, l, row.section === 'RECENT' ? Palette.DIM : upcomingInk);
-      cells(p, row.status.text.padEnd(l.statusCells), l.statusX, y, l.statusCells, l, Palette.ink(row.status.tone), { live: row.status.tone === 'LIVE' });
+      const time = !l.dayLines && row.section === 'RECENT' ? row.dayTime : row.time;
+      cells(p, time, l.pad, y, l.timeCells, l, row.section === 'RECENT' ? LABEL : upcomingInk);
+      const status = !l.dayLines && !row.status.text ? row.shortDay : row.status.text;
+      cells(p, status.padEnd(l.statusCells), l.statusX, y, l.statusCells, l, Palette.ink(row.status.tone), { live: row.status.tone === 'LIVE' });
       const sy = l.oneLine ? y : y + l.ch + l.lineGap;
       const homeWon = row.done && row.winner === 'HOME';
       const awayWon = row.done && row.winner === 'AWAY';
+      const ink = (t, lost) => (lost ? Palette.DIM : row.pinnedTeam != null && row.pinnedTeam === t.id ? Palette.RULE : Palette.INK);
       const n = l.nameCells;
-      cells(p, Flap.clean(row.homeName(n)).padStart(n), l.homeX, sy, n, l, awayWon ? Palette.DIM : Palette.INK, { bold: homeWon });
-      score(p, row.homeScore, l.scoreX, sy, l, awayWon);
-      score(p, row.awayScore, l.awayScoreX, sy, l, homeWon);
-      cells(p, Flap.clean(row.awayName(n)).padEnd(n), l.awayX, sy, n, l, homeWon ? Palette.DIM : Palette.INK, { bold: awayWon });
-      bands.push([y - l.rowGap / 2, y + l.rowH + l.rowGap / 2]);
-    });
-    footer(p, l, model.footer, model.more > 0 ? `+${model.more} MORE` : '', model.stale ? Palette.ink('BOARDING') : Palette.DIM);
+      cells(p, Flap.clean(row.homeName(n)).padStart(n), l.homeX, sy, n, l, ink(row.home, awayWon), { bold: homeWon });
+      if (row.homeScore == null && row.awayScore == null && !row.live) {
+        // No score yet: a small "v" between the names instead of two empty flaps.
+        const size = l.fontSize * 0.8;
+        p.text('v', (l.scoreX + l.awayScoreX + l.scoreW) / 2, sy + l.ch / 2 + p.capHeight(size) / 2, size, LABEL, 'center');
+      } else {
+        score(p, row.homeScore, l.scoreX, sy, l, awayWon);
+        score(p, row.awayScore, l.awayScoreX, sy, l, homeWon);
+      }
+      cells(p, Flap.clean(row.awayName(n)).padEnd(n), l.awayX, sy, n, l, ink(row.away, homeWon), { bold: awayWon });
+      bands.push([top - l.rowGap / 2, y + l.rowH + l.rowGap / 2]);
+      y += l.rowH + l.rowGap;
+    }
+    const more = (model.more || 0) + Math.max(0, model.rows.length - bands.length);
+    footer(p, l, model.footer, more > 0 ? `+${more} MORE` : '', model.stale ? Palette.ink('BOARDING') : LABEL);
     return bands;
   }
 
