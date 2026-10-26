@@ -133,7 +133,9 @@
       busy = false;
       render();
       clearTimeout(timer);
-      timer = setTimeout(refresh, EVERY);
+      // A calendar that failed is tried again in two minutes (so starting the helper shows up soon).
+      var anyFailed = Object.keys(keep).some(function (k) { return keep[k].error && keep[k].error !== 'NOT A GOOGLE ICAL ADDRESS'; });
+      timer = setTimeout(refresh, anyFailed ? 2 * 60000 : EVERY);
     }
 
     function lineFor(c, name) {

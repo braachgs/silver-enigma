@@ -40,13 +40,21 @@ that only fetches those two services, passes your key through without
 storing it, and needs no install or admin rights (Windows PowerShell is
 built in).
 
+In PowerShell, from wherever the file was downloaded, this moves it to a
+permanent folder and starts it now and at every sign-in:
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File DayBoardHelper.ps1 -Install    # now and at every sign-in
-powershell -ExecutionPolicy Bypass -File DayBoardHelper.ps1 -Uninstall  # stop and remove
+$d = "$env:LOCALAPPDATA\DayBoard"; New-Item -ItemType Directory -Force $d | Out-Null
+Move-Item "$env:USERPROFILE\Downloads\DayBoardHelper.ps1" $d -Force
+powershell -ExecutionPolicy Bypass -File "$d\DayBoardHelper.ps1" -Install
 ```
 
+Check it at http://localhost:8577/ping ("Day Board Helper"). To stop and
+remove it: `powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\DayBoard\DayBoardHelper.ps1" -Uninstall`.
+
 The widgets try the direct route first and switch to the helper by
-themselves, retrying direct every hour.
+themselves, retrying direct every hour. After a failed update they try
+again every two minutes, so a newly started helper shows up quickly.
 
 ## Rules carried over from the phone
 

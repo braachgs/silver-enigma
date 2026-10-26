@@ -107,6 +107,13 @@ const server = http.createServer((req, res) => {
     const { ctx, p } = await open('matchboard', SLOTS.VM, MB, { direct: false, helper: false });
     const s = await p.evaluate(() => ({ store: JSON.parse(localStorage.getItem('matchboard-standalone')), rows: shownRows.length }));
     ok(s.store.error === 'OFFLINE OR BLOCKED' && s.rows === 0, 'nothing gets through: no rows, and the board points at the helper');
+    // Then it waits two minutes between tries: never a tight retry loop.
+    const before = await p.evaluate(() => JSON.parse(localStorage.getItem('matchboard-standalone')).attemptAt);
+    await p.clock.runFor(60000); await p.waitForTimeout(200);
+    const at1 = await p.evaluate(() => JSON.parse(localStorage.getItem('matchboard-standalone')).attemptAt);
+    await p.clock.runFor(70000); await p.waitForTimeout(300);
+    const at2 = await p.evaluate(() => JSON.parse(localStorage.getItem('matchboard-standalone')).attemptAt);
+    ok(at1 === before && at2 > before && at2 - before >= 120000, `after a failure it retries in two minutes, not at once (${(at2 - before) / 1000}s)`);
     await p.screenshot({ path: `${OUT}/match-blocked.png` });
     await ctx.close();
   }

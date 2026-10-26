@@ -48,6 +48,7 @@
     var BASE = 'https://api.football-data.org/v4';
     var FULL_EVERY = 15 * 60000;
     var LIVE_EVERY = 60000;
+    var RETRY_EVERY = 2 * 60000;
     var cfg = { apiKey: '', club: 'Brentford' };
     var bands = [];
     var shownRows = [];
@@ -111,6 +112,7 @@
       busy = true;
       var s = load();
       var now = Date.now();
+      s.attemptAt = now;
       var today = Matches.dayStart(now);
       try {
         if (liveOnly) {
@@ -155,7 +157,11 @@
       var live = !!(pin && Matches.isLive(pin.status));
       var last = load();
       var lastFull = last.sources.next ? last.sources.next.at : 0;
-      var due = Math.max(0, lastFull + FULL_EVERY - now);
+      // After a failure, try again in two minutes (not at once: that would hammer
+      // the API), so a fix such as starting the helper shows up soon.
+      var due = last.error
+        ? Math.max(RETRY_EVERY, (last.attemptAt || 0) + RETRY_EVERY - now)
+        : Math.max(0, lastFull + FULL_EVERY - now);
       if (live) {
         timer = setTimeout(function () { refresh(Date.now() - lastFull < FULL_EVERY); }, Math.min(LIVE_EVERY, due || LIVE_EVERY));
       } else {
