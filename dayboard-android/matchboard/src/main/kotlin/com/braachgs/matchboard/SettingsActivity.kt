@@ -78,7 +78,7 @@ class SettingsActivity : Activity() {
         val placed = Widgets.ids(this).size
         content.addView(button(if (placed == 0) "Add to home screen" else "Add another to home screen", primary = Store.apiKey(this).isNotEmpty()) { pin() }
             .apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(24) })
-        content.addView(text("Tap a finished match for its highlights on YouTube, or a live or upcoming one for Peacock's Premier League page. " +
+        content.addView(text("Tap a finished match for its highlights on YouTube, or a live or upcoming one for its live score on Google. " +
             "Tap the board's header to come back here.", 13f, dim).apply { setPadding(0, dp(16), 0, 0) })
         content.addView(text("Updates every 15 minutes. While your club is playing, every minute as long as the screen is on and Battery Saver is off. " +
             "Scores are exactly as football-data.org last sent them; the footer says when that was.", 13f, dim).apply { setPadding(0, dp(8), 0, 0) })

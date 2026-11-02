@@ -37,7 +37,8 @@ eq(M.build({ matches, fetchedAt: T('2026-10-24T18:10:00Z') }, BRE, now, 4).foote
 eq(M.build({ matches: [], fetchedAt: null, error: 'CHECK API KEY' }, BRE, now, 4).message, 'CHECK API KEY', 'first update failed: says why');
 eq([M.findClub(matches, 'brentford').id, M.findClub(matches, 'Spurs').id, M.findClub(matches, 'BHA').id, M.findClub(matches, 'xyz')], [402, 73, 397, null], 'club by name, short form or code');
 eq(M.link(matches.find((m) => m.id === 1004)), 'https://www.youtube.com/results?search_query=Fulham+vs+Bournemouth+highlights+Premier+League+NBC+Sports', 'finished: highlights search');
-eq(M.link(bre), 'https://www.peacocktv.com/sports/premier-league', 'live: Peacock');
+eq(M.link(bre), `https://www.google.com/search?q=${encodeURIComponent(`${bre.home.name.replace(/^A?FC\s+|\s+A?FC$/g, '')} vs ${bre.away.name.replace(/^A?FC\s+|\s+A?FC$/g, '')}`).replace(/%20/g, '+')}`, 'live: Google match card');
+console.log('  ' + M.link(bre));
 eq([M.fitName(bre.away, 10), M.fitName(bre.away, 8), M.fitName(matches.find((m) => m.id === 1003).away, 11)], ['Man United', 'Man Utd', 'Palace'], 'names fit their flaps');
 const cov = { id: 1076, name: 'Coventry City FC', shortName: 'Coventry City', tla: 'COV' };
 const hull = { id: 322, name: 'Hull City AFC', shortName: 'Hull City', tla: 'HUL' };

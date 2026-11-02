@@ -12,7 +12,7 @@ widgets: the renderer, colours, flap font and board logic are ports of
 
 Both fit every Edge slot size, portrait or landscape: a VL (696x1688) slot
 shows about ten matches or departures. Match Board rows are tappable:
-finished matches open YouTube highlights, live and upcoming ones Peacock,
+finished matches open YouTube highlights, live and upcoming ones Google's match card (live score),
 in your default browser (iCUE's Link plugin). Tap its header to update now.
 
 ## Install

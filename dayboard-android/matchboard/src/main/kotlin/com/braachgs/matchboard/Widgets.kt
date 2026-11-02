@@ -25,13 +25,13 @@ import dayboard.match.Standings
 import dayboard.match.TableLayout
 import dayboard.match.TableModel
 import dayboard.match.TableRenderer
+import dayboard.match.Team
 import java.net.URLEncoder
 import java.time.ZoneId
 import java.util.Locale
 
 /** Draws every Match Board widget and arranges the next redraw. */
 object Widgets {
-    const val PEACOCK = "https://www.peacocktv.com/sports/premier-league"
     private val ROWS = intArrayOf(R.id.row0, R.id.row1, R.id.row2, R.id.row3, R.id.row4, R.id.row5, R.id.row6, R.id.row7, R.id.row8, R.id.row9)
 
     @Volatile private var typeface: Typeface? = null
@@ -211,12 +211,15 @@ object Widgets {
         if (Build.VERSION.SDK_INT >= 31) v.setViewLayoutHeight(id, h.toFloat(), TypedValue.COMPLEX_UNIT_PX)
     }
 
-    /** Finished: highlights on YouTube. Live or upcoming: Peacock's Premier League page. */
+    /** Finished: highlights on YouTube. Live or upcoming: Google's match card, with the live score. */
     fun link(m: Match): Uri =
         if (m.status.done) {
             val q = "${Clubs.name(m.home)} vs ${Clubs.name(m.away)} highlights Premier League NBC Sports"
             Uri.parse("https://www.youtube.com/results?search_query=" + URLEncoder.encode(q, "UTF-8"))
-        } else Uri.parse(PEACOCK)
+        } else Uri.parse("https://www.google.com/search?q=" + URLEncoder.encode("${searchName(m.home)} vs ${searchName(m.away)}", "UTF-8"))
+
+    /** The club's full name without FC/AFC, as Google knows it ("Wolverhampton Wanderers"). */
+    private fun searchName(t: Team): String = t.name.replace(Regex("^A?FC\\s+|\\s+A?FC$"), "").trim()
 
     private fun describe(m: MatchBoardModel): String =
         if (m.rows.isEmpty()) "Match Board: ${m.message?.lowercase()}" else "Match Board, ${m.footer.lowercase()}"

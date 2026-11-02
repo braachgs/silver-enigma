@@ -68,8 +68,8 @@ tested on the JVM (`MatchTest`, with previews in `core/build/previews/match-*.pn
   ("AS OF 2:39 PM · OFFLINE").
 - **Taps**: each row is its own band of the board with its own link:
   finished matches search YouTube for "<Home> vs <Away> highlights
-  Premier League NBC Sports"; live and upcoming ones open Peacock's
-  Premier League page. The header and footer open the app.
+  Premier League NBC Sports"; live and upcoming ones search Google for
+  "<Home> vs <Away>", whose match card has the live score. The header and footer open the app.
 
 ## Layout
 

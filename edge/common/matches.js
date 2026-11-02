@@ -210,13 +210,17 @@
     return next;
   }
 
-  /** Finished: YouTube highlights. Live or upcoming: Peacock's Premier League page. */
+  const plus = (q) => encodeURIComponent(q).replace(/%20/g, '+');
+  /** The club's full name without FC/AFC, as Google knows it ("Wolverhampton Wanderers"). */
+  const searchName = (t) => (t.name || t.shortName || '').replace(/^A?FC\s+|\s+A?FC$/g, '').trim();
+
+  /** Finished: YouTube highlights. Live or upcoming: Google's match card, with the live score. */
   function link(m) {
     if (isDone(m.status)) {
       const q = `${clubName(m.home)} vs ${clubName(m.away)} highlights Premier League NBC Sports`;
-      return `https://www.youtube.com/results?search_query=${encodeURIComponent(q).replace(/%20/g, '+')}`;
+      return `https://www.youtube.com/results?search_query=${plus(q)}`;
     }
-    return 'https://www.peacocktv.com/sports/premier-league';
+    return `https://www.google.com/search?q=${plus(`${searchName(m.home)} vs ${searchName(m.away)}`)}`;
   }
 
   /** The club whose name, short name or code matches [text] ("Brentford", "Spurs", "BRE"). */

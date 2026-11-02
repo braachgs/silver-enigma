@@ -93,7 +93,7 @@ const server = http.createServer((req, res) => {
       const fin = rows.indexOf(1004);
       if (fin >= 0) await p.mouse.click(300, bandsY[fin]);
       const opened = await p.evaluate(() => window.__opened);
-      ok(opened[0] === 'https://www.peacocktv.com/sports/premier-league' && (fin < 0 || /youtube\.com\/results\?search_query=Fulham\+vs\+Bournemouth/.test(opened[1])), `taps open Peacock (live) and YouTube highlights (finished): ${opened.join(' | ')}`);
+      ok(/^https:\/\/www\.google\.com\/search\?q=Brentford\+vs\+/.test(opened[0]) && (fin < 0 || /youtube\.com\/results\?search_query=Fulham\+vs\+Bournemouth/.test(opened[1])), `taps open Google's live score (live) and YouTube highlights (finished): ${opened.join(' | ')}`);
     }
     await ctx.close();
   }
